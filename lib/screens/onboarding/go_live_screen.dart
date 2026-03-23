@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/avatar_provider.dart';
 import '../../routes/route_names.dart';
 import '../../theme/presnt_tokens.dart';
 import '../../widgets/presnt/presnt_buttons.dart';
 
-class GoLiveScreen extends StatelessWidget {
+class GoLiveScreen extends ConsumerWidget {
   const GoLiveScreen({super.key});
 
   static const _artUrl =
       'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&h=600&fit=crop';
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       backgroundColor: PresntTokens.surface,
       body: Stack(
@@ -110,7 +113,20 @@ class GoLiveScreen extends StatelessWidget {
                   const Spacer(),
                   PresntGradientCta(
                     label: 'Enter Presnt',
-                    onPressed: () => context.goNamed(RouteNames.home),
+                    onPressed: () async {
+                      final user = ref.read(authProvider);
+                      if (user == null) return;
+                      try {
+                        await ref.read(avatarProvider.notifier).setAvatarLive(ownerId: user.uid, isLive: true);
+                        await ref.read(authProvider.notifier).updateTrainingFlags(isLive: true);
+                        if (context.mounted) context.goNamed(RouteNames.home);
+                      } catch (_) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Could not activate avatar yet. Please retry.')),
+                        );
+                      }
+                    },
                   ),
                   const SizedBox(height: 12),
                   Text(

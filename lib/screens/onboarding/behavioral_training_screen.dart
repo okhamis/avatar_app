@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../routes/route_names.dart';
 import '../../theme/presnt_tokens.dart';
 import '../../providers/avatar_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../widgets/presnt/presnt_glass_bar.dart';
 
 class BehavioralTrainingScreen extends ConsumerStatefulWidget {
@@ -43,16 +44,28 @@ class _BehavioralTrainingScreenState extends ConsumerState<BehavioralTrainingScr
   bool get _canContinue => _controllers.any((c) => c.text.trim().isNotEmpty);
 
   Future<void> _continue() async {
+    final user = ref.read(authProvider);
+    if (user == null) return;
     setState(() => _loading = true);
     final answers = <String, String>{};
     for (var i = 0; i < _questions.length; i++) {
       final t = _controllers[i].text.trim();
       if (t.isNotEmpty) answers['q${i + 1}'] = t;
     }
-    await ref.read(behavioralLlmProvider).trainBehavior(answers);
-    if (mounted) {
-      setState(() => _loading = false);
-      context.goNamed(RouteNames.avatarPreview);
+    try {
+      await ref.read(avatarProvider.notifier).trainBehaviorProfile(ownerId: user.uid, answers: answers);
+      await ref.read(authProvider.notifier).updateTrainingFlags(hasBehaviorTrained: true);
+      if (mounted) {
+        setState(() => _loading = false);
+        context.goNamed(RouteNames.avatarPreview);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Behavior training failed. Please try again.')),
+        );
+      }
     }
   }
 

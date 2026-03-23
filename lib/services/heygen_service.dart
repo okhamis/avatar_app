@@ -6,11 +6,12 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 class HeyGenService {
   String? _sessionId;
   
-  Future<void> trainFaceModel(List<String> imagePaths) async {
+  Future<String> trainFaceModel(List<String> imagePaths) async {
     // Face cloning requires explicit image upload sequence and usually human verification
     // Simulating the heavy payload lifting locally for the MVP scope limits
     await Future.delayed(const Duration(seconds: 2));
     debugPrint("Simulated HeyGen Face Model trained using ${imagePaths.length} local images.");
+    return "face_${DateTime.now().millisecondsSinceEpoch}";
   }
 
   /// Establishes an interactive WebRTC streaming session with the HeyGen servers

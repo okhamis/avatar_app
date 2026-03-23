@@ -8,6 +8,7 @@ import '../../theme/presnt_tokens.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/avatar_provider.dart';
 import '../../providers/approval_provider.dart';
+import '../../models/avatar_model.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -21,9 +22,9 @@ class HomeScreen extends ConsumerWidget {
     final avatar = ref.watch(avatarProvider);
     final pendingApprovals = ref.watch(pendingApprovalsProvider).where((t) => !t.used && !t.invalidated).length;
 
-    final name = user?.fullName ?? 'Alexander Voss';
-    final status = avatar?.status ?? 'active';
-    final fidelityPct = ((avatar?.fidelityScore ?? 0.98) * 100).round();
+    final name = user?.fullName ?? 'Your Avatar';
+    final status = (avatar?.status ?? AvatarStatus.draft).name;
+    final fidelityPct = ((avatar?.fidelityScore ?? 0.0) * 100).round();
 
     return Scaffold(
       backgroundColor: PresntTokens.background,
@@ -95,7 +96,7 @@ class HomeScreen extends ConsumerWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        status == 'active' ? 'READY' : status.toUpperCase(),
+                        status == 'live' ? 'READY' : status.toUpperCase(),
                         style: GoogleFonts.inter(
                           fontSize: 10,
                           letterSpacing: 2,

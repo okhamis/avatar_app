@@ -1,20 +1,23 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/avatar_provider.dart';
 import '../../routes/route_names.dart';
 import '../../theme/presnt_tokens.dart';
 import '../../widgets/presnt/presnt_glass_bar.dart';
 import '../../widgets/presnt/presnt_buttons.dart';
 
-class VoiceRecordScreen extends StatefulWidget {
+class VoiceRecordScreen extends ConsumerStatefulWidget {
   const VoiceRecordScreen({super.key});
 
   @override
-  State<VoiceRecordScreen> createState() => _VoiceRecordScreenState();
+  ConsumerState<VoiceRecordScreen> createState() => _VoiceRecordScreenState();
 }
 
-class _VoiceRecordScreenState extends State<VoiceRecordScreen> with TickerProviderStateMixin {
+class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with TickerProviderStateMixin {
   bool _isRecording = false;
   double _progress = 0.0;
   Timer? _timer;
@@ -272,7 +275,26 @@ class _VoiceRecordScreenState extends State<VoiceRecordScreen> with TickerProvid
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
             child: PresntGradientCta(
               label: 'Continue to Analysis',
-              onPressed: complete ? () => context.goNamed(RouteNames.behavioralTraining) : null,
+              onPressed: complete
+                  ? () async {
+                      final user = ref.read(authProvider);
+                      if (user == null) return;
+                      try {
+                        await ref.read(avatarProvider.notifier).saveVoiceDraft(
+                          ownerId: user.uid,
+                          samplePath: 'sample_${DateTime.now().millisecondsSinceEpoch}.m4a',
+                        );
+                        await ref.read(authProvider.notifier).updateTrainingFlags(hasVoiceCloned: true);
+                        if (!context.mounted) return;
+                        context.goNamed(RouteNames.behavioralTraining);
+                      } catch (_) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Voice setup failed. Please retry.')),
+                        );
+                      }
+                    }
+                  : null,
               padding: const EdgeInsets.symmetric(vertical: 18),
             ),
           ),

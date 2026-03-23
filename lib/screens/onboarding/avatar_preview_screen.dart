@@ -1,20 +1,26 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../providers/avatar_provider.dart';
 import '../../routes/route_names.dart';
 import '../../theme/presnt_tokens.dart';
 import '../../widgets/presnt/presnt_glass_bar.dart';
 import '../../widgets/presnt/presnt_buttons.dart';
 
-class AvatarPreviewScreen extends StatelessWidget {
+class AvatarPreviewScreen extends ConsumerWidget {
   const AvatarPreviewScreen({super.key});
 
   static const _previewUrl =
       'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=800&h=800&fit=crop';
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final avatar = ref.watch(avatarProvider);
+    final fidelityLabel = '${(((avatar?.fidelityScore ?? 0.984) * 100)).toStringAsFixed(1)}%';
+    final livePreview = avatar?.previewImagePath;
+    final previewUrl = (livePreview != null && livePreview.startsWith('http')) ? livePreview : _previewUrl;
     return Scaffold(
       backgroundColor: PresntTokens.background,
       extendBodyBehindAppBar: true,
@@ -25,7 +31,7 @@ class AvatarPreviewScreen extends StatelessWidget {
           backgroundColor: PresntTokens.surfaceContainerHigh,
           child: ClipOval(
             child: Image.network(
-              _previewUrl,
+              previewUrl,
               width: 36,
               height: 36,
               fit: BoxFit.cover,
@@ -92,18 +98,18 @@ class AvatarPreviewScreen extends StatelessWidget {
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(flex: 58, child: _previewPane(context)),
+                      Expanded(flex: 58, child: _previewPane(context, previewUrl)),
                       const SizedBox(width: 28),
-                      Expanded(flex: 42, child: _sidePanel(context)),
+                      Expanded(flex: 42, child: _sidePanel(context, fidelityLabel)),
                     ],
                   );
                 }
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _previewPane(context),
+                    _previewPane(context, previewUrl),
                     const SizedBox(height: 24),
-                    _sidePanel(context),
+                    _sidePanel(context, fidelityLabel),
                   ],
                 );
               },
@@ -178,7 +184,7 @@ class AvatarPreviewScreen extends StatelessWidget {
     );
   }
 
-  Widget _previewPane(BuildContext context) {
+  Widget _previewPane(BuildContext context, String previewUrl) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -190,7 +196,7 @@ class AvatarPreviewScreen extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 Image.network(
-                  _previewUrl,
+                  previewUrl,
                   fit: BoxFit.cover,
                   errorBuilder: (_, _, _) => Container(
                     color: PresntTokens.surfaceContainerLowest,
@@ -299,7 +305,7 @@ class AvatarPreviewScreen extends StatelessWidget {
     );
   }
 
-  Widget _sidePanel(BuildContext context) {
+  Widget _sidePanel(BuildContext context, String fidelityLabel) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -322,7 +328,7 @@ class AvatarPreviewScreen extends StatelessWidget {
                       width: 160,
                       height: 160,
                       child: CircularProgressIndicator(
-                        value: 0.984,
+                        value: (double.tryParse(fidelityLabel.replaceAll('%', '')) ?? 98.4) / 100,
                         strokeWidth: 8,
                         backgroundColor: PresntTokens.surfaceContainerHighest,
                         color: PresntTokens.secondary,
@@ -332,7 +338,7 @@ class AvatarPreviewScreen extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '98.4%',
+                          fidelityLabel,
                           style: GoogleFonts.manrope(
                             fontSize: 36,
                             fontWeight: FontWeight.w800,

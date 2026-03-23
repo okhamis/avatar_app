@@ -1,26 +1,44 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/avatar_provider.dart';
 import '../../routes/route_names.dart';
 import '../../theme/presnt_tokens.dart';
 import '../../widgets/presnt/presnt_glass_bar.dart';
 import '../../widgets/presnt/presnt_onboarding_progress.dart';
 
-class FaceUploadScreen extends StatefulWidget {
-  const FaceUploadScreen({super.key});
+class FaceUploadScreen extends ConsumerStatefulWidget {
+  const FaceUploadScreen({
+    super.key,
+    this.initialPhotos = const [],
+    this.renderPhotoThumbnails = true,
+  });
+
+  final List<XFile> initialPhotos;
+  final bool renderPhotoThumbnails;
 
   @override
-  State<FaceUploadScreen> createState() => _FaceUploadScreenState();
+  ConsumerState<FaceUploadScreen> createState() => _FaceUploadScreenState();
 }
 
-class _FaceUploadScreenState extends State<FaceUploadScreen> {
+class _FaceUploadScreenState extends ConsumerState<FaceUploadScreen> {
   static const int kMax = 10;
   static const int kMin = 5;
 
   final ImagePicker _picker = ImagePicker();
   final List<XFile> _photos = [];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialPhotos.isNotEmpty) {
+      _photos.addAll(widget.initialPhotos.take(kMax));
+    }
+  }
 
   Future<void> _pickGallery() async {
     try {
@@ -145,7 +163,24 @@ class _FaceUploadScreenState extends State<FaceUploadScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: canContinue ? () => context.goNamed(RouteNames.voiceRecord) : null,
+                  onPressed: canContinue
+                      ? () async {
+                          final user = ref.read(authProvider);
+                          if (user == null) return;
+                          final paths = _photos.map((p) => p.path).toList();
+                          try {
+                            await ref.read(avatarProvider.notifier).saveFaceDraft(ownerId: user.uid, imagePaths: paths);
+                            await ref.read(authProvider.notifier).updateTrainingFlags(hasFaceTrained: true);
+                            if (!context.mounted) return;
+                            context.goNamed(RouteNames.voiceRecord);
+                          } catch (_) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('We could not process photos right now. Please try again.')),
+                            );
+                          }
+                        }
+                      : null,
                   style: ElevatedButton.styleFrom(
                     elevation: 0,
                     backgroundColor: canContinue ? PresntTokens.ctaPurple : PresntTokens.surfaceContainerHighest,
@@ -266,10 +301,12 @@ class _FaceUploadScreenState extends State<FaceUploadScreen> {
                 ? Stack(
                     fit: StackFit.expand,
                     children: [
-                      Image.file(
-                        File(_photos[index].path),
-                        fit: BoxFit.cover,
-                      ),
+                      widget.renderPhotoThumbnails
+                          ? Image.file(
+                              File(_photos[index].path),
+                              fit: BoxFit.cover,
+                            )
+                          : Container(color: PresntTokens.surfaceContainerHigh),
                       Positioned(
                         top: 8,
                         right: 8,

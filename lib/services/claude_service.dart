@@ -61,9 +61,10 @@ class ClaudeService implements BehavioralLlm {
   }
 
   @override
-  Future<void> trainBehavior(Map<String, String> answers) async {
+  Future<String> trainBehavior(Map<String, String> answers) async {
     // Placeholder for a future pipeline that stores prompts/profile traits.
     await Future.delayed(const Duration(milliseconds: 900));
     debugPrint('Behavior profile snapshot captured: ${answers.length} answers.');
+    return 'behavior_${DateTime.now().millisecondsSinceEpoch}';
   }
 }

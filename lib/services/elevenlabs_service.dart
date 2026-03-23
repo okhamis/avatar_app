@@ -8,11 +8,12 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 class ElevenLabsService {
   final String _defaultVoiceId = "21m00Tcm4TlvDq8ikWAM"; // Example Voice ID
 
-  Future<void> cloneVoice(String audioFilePath) async {
+  Future<String> cloneVoice(String audioFilePath) async {
     // Voice cloning uses a separate multipart upload endpoint.
     // Simulating locally to avoid unnecessary API consumption during tests.
     await Future.delayed(const Duration(seconds: 2));
     debugPrint("Simulated Voice Clone initiated.");
+    return "voice_${DateTime.now().millisecondsSinceEpoch}";
   }
 
   Future<String> generateSpeech(String text) async {

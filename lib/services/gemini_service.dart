@@ -32,9 +32,10 @@ class GeminiService implements BehavioralLlm {
   }
 
   @override
-  Future<void> trainBehavior(Map<String, String> answers) async {
+  Future<String> trainBehavior(Map<String, String> answers) async {
     // Collect fine-tuning metadata into a context blob for future Gemini context windows
     await Future.delayed(const Duration(seconds: 2));
     debugPrint("Simulated Training completed with ${answers.length} datasets using Gemini framework.");
+    return "behavior_${DateTime.now().millisecondsSinceEpoch}";
   }
 }

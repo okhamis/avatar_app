@@ -29,10 +29,51 @@ import '../screens/settings/credentials_vault_screen.dart';
 import '../screens/settings/integrations_screen.dart';
 
 import '../theme/app_colors.dart';
+import '../providers/auth_provider.dart';
+import '../providers/avatar_provider.dart';
+import '../models/avatar_model.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
+  final user = ref.watch(authProvider);
+  final avatar = user == null ? null : ref.watch(avatarProvider);
+
   return GoRouter(
     initialLocation: '/welcome',
+    redirect: (context, state) {
+      final path = state.uri.path;
+      final onboardingPaths = <String>{
+        '/welcome',
+        '/create-account',
+        '/face-upload',
+        '/voice-record',
+        '/behavioral-training',
+        '/avatar-preview',
+        '/go-live',
+      };
+
+      if (user == null) {
+        if (path == '/home' || path.startsWith('/conversations') || path.startsWith('/approvals') || path.startsWith('/family') || path.startsWith('/settings')) {
+          return '/welcome';
+        }
+        return null;
+      }
+
+      if (!user.hasFaceTrained) return path == '/face-upload' ? null : '/face-upload';
+      if (!user.hasVoiceCloned) return path == '/voice-record' ? null : '/voice-record';
+      if (!user.hasBehaviorTrained) return path == '/behavioral-training' ? null : '/behavioral-training';
+      if (!user.isLive) {
+        if (path == '/go-live' || path == '/avatar-preview') return null;
+        return '/avatar-preview';
+      }
+
+      if (onboardingPaths.contains(path)) {
+        return '/home';
+      }
+      if (path == '/conversations/live' && avatar?.status != AvatarStatus.live) {
+        return '/go-live';
+      }
+      return null;
+    },
     routes: [
       GoRoute(
         path: '/welcome',
