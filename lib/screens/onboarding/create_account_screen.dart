@@ -51,14 +51,22 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
     });
 
     try {
-      await ref.read(authProvider.notifier).login(email, password);
+      await ref.read(authProvider.notifier).createAccount(name, email, password);
       if (mounted) context.goNamed(RouteNames.faceUpload);
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
+        final message = e.toString().replaceFirst('Exception: ', '').trim();
         setState(() {
-          _error = 'Account creation failed. Please try again.';
+          _error = message.isEmpty ? 'Account creation failed. Please try again.' : message;
           _loading = false;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_error!),
+            backgroundColor: PresntTokens.tertiaryContainer,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     }
   }

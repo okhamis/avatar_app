@@ -1,11 +1,29 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 
 class FirebaseService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  FirebaseAuth get _auth {
+    _ensureFirebaseInitialized();
+    return FirebaseAuth.instance;
+  }
+
+  FirebaseFirestore get _firestore {
+    _ensureFirebaseInitialized();
+    return FirebaseFirestore.instance;
+  }
+
+  void _ensureFirebaseInitialized() {
+    if (Firebase.apps.isEmpty) {
+      throw FirebaseException(
+        plugin: 'firebase_core',
+        code: 'no-app',
+        message: 'Firebase is not configured. Add Firebase config files and initialize Firebase before auth.',
+      );
+    }
+  }
 
   Future<UserModel> getUserProfile(String uid) async {
     try {
@@ -33,24 +51,25 @@ class FirebaseService {
       }, SetOptions(merge: true));
     } catch (e) {
       debugPrint("Error saving user to Firestore: $e");
+      rethrow;
     }
   }
 
-  Future<UserCredential?> signInWithEmail(String email, String password) async {
+  Future<UserCredential> signInWithEmail(String email, String password) async {
     try {
       return await _auth.signInWithEmailAndPassword(email: email, password: password);
     } catch (e) {
       debugPrint("FirebaseAuth Login Error: $e");
-      return null;
+      rethrow;
     }
   }
 
-  Future<UserCredential?> createUserWithEmail(String email, String password) async {
+  Future<UserCredential> createUserWithEmail(String email, String password) async {
     try {
       return await _auth.createUserWithEmailAndPassword(email: email, password: password);
     } catch (e) {
       debugPrint("FirebaseAuth Signup Error: $e");
-      return null;
+      rethrow;
     }
   }
 }
