@@ -1,0 +1,18 @@
+---
+description: Regression checks for adjacent flows
+alwaysApply: true
+---
+
+# Regression Guard
+
+For every bug fix, validate impacted adjacent flows.
+
+For auth/onboarding changes, always check:
+- Login flow
+- Create account flow
+- Startup initialization path
+- Error display UX (inline/snackbar/message quality)
+
+If a fix reveals another issue:
+- Continue investigation until root cause is identified.
+- Separate newly discovered underlying issue from original issue.

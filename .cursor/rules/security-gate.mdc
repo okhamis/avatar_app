@@ -1,0 +1,19 @@
+---
+description: Security gate for auth and config changes
+alwaysApply: true
+---
+
+# Security Gate
+
+For authentication, identity, and config-related edits:
+
+- Reject insecure bypass behavior in production paths.
+- Any mock/fallback auth must be debug-only.
+- Do not swallow security-relevant exceptions silently.
+- Ensure user-facing errors are safe (no stack traces/secrets).
+- Flag missing security/config setup as blockers.
+
+Security section is required in final report:
+- Risks introduced
+- Risks remaining
+- Production readiness (yes/no)

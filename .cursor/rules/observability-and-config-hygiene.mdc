@@ -1,0 +1,19 @@
+---
+description: Observability, secrets hygiene, and PR quality requirements
+alwaysApply: true
+---
+
+# Observability and Config Hygiene
+
+- Never commit secrets, tokens, or credential files.
+- Redact sensitive values in logs and screenshots.
+- Ensure critical flows have actionable debug logging.
+- For config-dependent features, list required setup artifacts.
+
+# PR Quality Requirements
+
+Final update must include:
+- Change summary
+- Test plan executed
+- Risk assessment
+- Known limitations/blockers

@@ -1,0 +1,25 @@
+---
+description: Strict Definition of Done for bug fixes
+alwaysApply: true
+---
+
+# Definition of Done
+
+Do not mark a fix complete until all are true:
+
+- Original issue is reproduced or validated from logs/code path.
+- Minimal safe code change is implemented.
+- Static checks pass (`flutter analyze` at minimum).
+- Tests pass (`flutter test` at minimum).
+- Runtime behavior is validated when issue is user-flow/runtime related.
+- Both paths are verified:
+  - Happy path
+  - Failure/error path
+- Response includes:
+  - Fixed
+  - Verified (commands/outcomes)
+  - Security
+  - Remaining blockers
+  - Next action
+
+If any blocker remains, status must be partially fixed, not fixed.

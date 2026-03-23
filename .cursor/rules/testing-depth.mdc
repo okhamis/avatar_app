@@ -1,0 +1,14 @@
+---
+description: Testing depth and regression test expectations
+alwaysApply: true
+---
+
+# Testing Depth
+
+For every bug fix:
+
+- Add or update targeted tests when feasible.
+- If no test is added, explicitly state why.
+- Do not rely only on smoke tests for behavior regressions.
+- Prefer smallest focused test that protects against recurrence.
+- Re-run touched test scope after final edits.

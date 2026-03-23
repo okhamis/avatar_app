@@ -1,0 +1,14 @@
+---
+description: Change risk, rollback, and release readiness checks
+alwaysApply: true
+---
+
+# Release Readiness
+
+For medium/high-risk changes:
+
+- Declare risk level (low/medium/high).
+- Define rollback plan before completion.
+- Define abort criteria (when to stop rollout/revert).
+- Identify external dependencies (APIs, config, credentials).
+- Note whether change is production-ready or environment-blocked.
