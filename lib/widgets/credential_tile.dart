@@ -1,21 +1,36 @@
 import 'package:flutter/material.dart';
 import '../models/credential_model.dart';
+import '../theme/app_colors.dart';
 
 class CredentialTile extends StatelessWidget {
   final CredentialModel credential;
+  final VoidCallback? onDelete;
 
-  const CredentialTile({Key? key, required this.credential}) : super(key: key);
+  const CredentialTile({super.key, required this.credential, this.onDelete});
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: const Icon(Icons.vpn_key),
-      title: Text(credential.credentialType),
-      subtitle: Text("Masked: ${credential.maskedPreview}"),
-      trailing: IconButton(
-        icon: const Icon(Icons.delete, color: Colors.red),
-        onPressed: () {},
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Icon(Icons.vpn_key, color: AppColors.primary, size: 20),
       ),
+      title: Text(credential.credentialType),
+      subtitle: Text(
+        credential.maskedPreview,
+        style: const TextStyle(color: AppColors.textSecondary, fontFamily: 'monospace'),
+      ),
+      trailing: onDelete != null
+          ? IconButton(
+              icon: const Icon(Icons.delete_outline, color: AppColors.danger),
+              onPressed: onDelete,
+              tooltip: 'Delete (requires biometric)',
+            )
+          : null,
     );
   }
 }

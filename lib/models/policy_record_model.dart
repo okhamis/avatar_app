@@ -20,4 +20,21 @@ class PolicyRecord {
     required this.timeoutSeconds,
     required this.overrideHistory,
   });
+
+  /// Returns the user override tier if set, otherwise the default tier.
+  int get effectiveTier => userOverrideTier ?? defaultTier;
+
+  PolicyRecord copyWith({int? userOverrideTier}) {
+    return PolicyRecord(
+      recordId: recordId,
+      accountId: accountId,
+      actionType: actionType,
+      defaultTier: defaultTier,
+      userOverrideTier: userOverrideTier ?? this.userOverrideTier,
+      domainOverrideTier: domainOverrideTier,
+      permanentlyBlocked: permanentlyBlocked,
+      timeoutSeconds: timeoutSeconds,
+      overrideHistory: overrideHistory,
+    );
+  }
 }
