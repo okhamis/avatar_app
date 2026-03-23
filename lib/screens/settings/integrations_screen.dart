@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class IntegrationsScreen extends StatelessWidget {
-  const IntegrationsScreen({Key? key}) : super(key: key);
+  const IntegrationsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

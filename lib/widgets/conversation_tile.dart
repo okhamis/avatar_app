@@ -5,7 +5,7 @@ class ConversationTile extends StatelessWidget {
   final SessionModel session;
   final VoidCallback onTap;
 
-  const ConversationTile({Key? key, required this.session, required this.onTap}) : super(key: key);
+  const ConversationTile({super.key, required this.session, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -15,7 +15,7 @@ class ConversationTile extends StatelessWidget {
       subtitle: Text(session.isLive ? "Live now" : "Duration: 5m"),
       trailing: Container(
         padding: const EdgeInsets.all(4),
-        color: session.isLive ? Colors.green.withOpacity(0.2) : Colors.grey.withOpacity(0.2),
+        color: session.isLive ? Colors.green.withValues(alpha: 0.2) : Colors.grey.withValues(alpha: 0.2),
         child: Text(session.status),
       ),
       onTap: onTap,

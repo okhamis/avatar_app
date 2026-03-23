@@ -3,7 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../routes/route_names.dart';
 
 class AvatarSetupScreen extends StatelessWidget {
-  const AvatarSetupScreen({Key? key}) : super(key: key);
+  const AvatarSetupScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
@@ -9,14 +10,14 @@ class HeyGenService {
     // Face cloning requires explicit image upload sequence and usually human verification
     // Simulating the heavy payload lifting locally for the MVP scope limits
     await Future.delayed(const Duration(seconds: 2));
-    print("Simulated HeyGen Face Model trained using ${imagePaths.length} local images.");
+    debugPrint("Simulated HeyGen Face Model trained using ${imagePaths.length} local images.");
   }
 
   /// Establishes an interactive WebRTC streaming session with the HeyGen servers
   Future<String?> createStreamingSession() async {
     final apiKey = dotenv.env['HEYGEN_API_KEY'];
     if (apiKey == null || apiKey.isEmpty || apiKey.contains('placeholder')) {
-      print("Missing HeyGen API Key for WebRTC Streaming");
+      debugPrint("Missing HeyGen API Key for WebRTC Streaming");
       return null;
     }
 
@@ -38,11 +39,11 @@ class HeyGenService {
         _sessionId = data['data']['session_id'];
         return data['data']['access_token']; // Required WebRTC SDP token
       } else {
-        print("HeyGen Session Error: ${response.statusCode} - ${response.body}");
+        debugPrint("HeyGen Session Error: ${response.statusCode}");
         return null;
       }
     } catch (e) {
-      print("HeyGen Exception: $e");
+      debugPrint("HeyGen Exception: $e");
       return null;
     }
   }
@@ -51,7 +52,7 @@ class HeyGenService {
   Future<void> sendTaskToAvatar(String textPayload) async {
     final apiKey = dotenv.env['HEYGEN_API_KEY'];
     if (_sessionId == null || apiKey == null || apiKey.contains('placeholder')) {
-      print("Cannot send HeyGen task: Missing Session ID or real API Key");
+      debugPrint("Cannot send HeyGen task: Missing Session ID or real API Key");
       return;
     }
 
@@ -70,10 +71,10 @@ class HeyGenService {
       );
 
       if (response.statusCode != 200) {
-        print("HeyGen Task Error: ${response.statusCode} - ${response.body}");
+        debugPrint("HeyGen Task Error: ${response.statusCode}");
       }
     } catch (e) {
-      print("HeyGen Task Exception: $e");
+      debugPrint("HeyGen Task Exception: $e");
     }
   }
 
@@ -93,7 +94,7 @@ class HeyGenService {
       );
       _sessionId = null;
     } catch (e) {
-      print("Close Session Exception: $e");
+      debugPrint("Close Session Exception: $e");
     }
   }
 }

@@ -4,7 +4,7 @@ class AvatarDisplay extends StatelessWidget {
   final String status; // active, sleeping, busy
   final double fidelity;
 
-  const AvatarDisplay({Key? key, required this.status, required this.fidelity}) : super(key: key);
+  const AvatarDisplay({super.key, required this.status, required this.fidelity});
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +33,7 @@ class AvatarDisplay extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.6),
+                color: Colors.black.withValues(alpha: 0.6),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(

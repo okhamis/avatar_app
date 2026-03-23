@@ -5,7 +5,7 @@ class PolicyToggle extends StatelessWidget {
   final int currentTier;
   final Function(int) onChanged;
 
-  const PolicyToggle({Key? key, required this.title, required this.currentTier, required this.onChanged}) : super(key: key);
+  const PolicyToggle({super.key, required this.title, required this.currentTier, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {

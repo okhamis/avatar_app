@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 
 class FirebaseService {
@@ -18,7 +19,7 @@ class FirebaseService {
         );
       }
     } catch (e) {
-      print("Error fetching user profile from Firestore: $e");
+      debugPrint("Error fetching user profile from Firestore: $e");
     }
     return UserModel(uid: uid, email: "error@example.com", fullName: "Fallback User");
   }
@@ -31,7 +32,7 @@ class FirebaseService {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (e) {
-      print("Error saving user to Firestore: $e");
+      debugPrint("Error saving user to Firestore: $e");
     }
   }
 
@@ -39,7 +40,7 @@ class FirebaseService {
     try {
       return await _auth.signInWithEmailAndPassword(email: email, password: password);
     } catch (e) {
-      print("FirebaseAuth Login Error: $e");
+      debugPrint("FirebaseAuth Login Error: $e");
       return null;
     }
   }
@@ -48,7 +49,7 @@ class FirebaseService {
     try {
       return await _auth.createUserWithEmailAndPassword(email: email, password: password);
     } catch (e) {
-      print("FirebaseAuth Signup Error: $e");
+      debugPrint("FirebaseAuth Signup Error: $e");
       return null;
     }
   }

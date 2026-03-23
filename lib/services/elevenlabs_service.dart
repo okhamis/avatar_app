@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -11,13 +12,13 @@ class ElevenLabsService {
     // Voice cloning uses a separate multipart upload endpoint.
     // Simulating locally to avoid unnecessary API consumption during tests.
     await Future.delayed(const Duration(seconds: 2));
-    print("Simulated Voice Clone initiated with raw file: $audioFilePath");
+    debugPrint("Simulated Voice Clone initiated.");
   }
 
   Future<String> generateSpeech(String text) async {
     final apiKey = dotenv.env['ELEVENLABS_API_KEY'];
     if (apiKey == null || apiKey.isEmpty || apiKey.contains('placeholder')) {
-      print("Missing ElevenLabs API Key, using local synthesis fallback path");
+      debugPrint("Missing ElevenLabs API Key, using local synthesis fallback path");
       return "dummy_audio_path.mp3";
     }
 
@@ -45,11 +46,11 @@ class ElevenLabsService {
         await file.writeAsBytes(response.bodyBytes);
         return file.path;
       } else {
-        print("ElevenLabs API Error: ${response.statusCode} - ${response.body}");
+        debugPrint("ElevenLabs API Error: ${response.statusCode}");
         return "error_audio_path.mp3";
       }
     } catch (e) {
-      print("ElevenLabs Exception: $e");
+      debugPrint("ElevenLabs Exception: $e");
       return "error_audio_path.mp3";
     }
   }

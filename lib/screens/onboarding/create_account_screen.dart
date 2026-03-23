@@ -1,36 +1,305 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../routes/route_names.dart';
+import '../../theme/presnt_tokens.dart';
+import '../../providers/auth_provider.dart';
+import '../../widgets/presnt/presnt_buttons.dart';
+import '../../widgets/presnt/presnt_onboarding_progress.dart';
 
-class CreateAccountScreen extends StatelessWidget {
-  const CreateAccountScreen({Key? key}) : super(key: key);
+class CreateAccountScreen extends ConsumerStatefulWidget {
+  const CreateAccountScreen({super.key});
+
+  @override
+  ConsumerState<CreateAccountScreen> createState() => _CreateAccountScreenState();
+}
+
+class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _loading = false;
+  String? _error;
+  bool _obscure = true;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _continue() async {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (name.isEmpty || email.isEmpty || password.isEmpty) {
+      setState(() => _error = 'Please fill in all fields.');
+      return;
+    }
+    if (password.length < 6) {
+      setState(() => _error = 'Password must be at least 6 characters.');
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      await ref.read(authProvider.notifier).login(email, password);
+      if (mounted) context.goNamed(RouteNames.faceUpload);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _error = 'Account creation failed. Please try again.';
+          _loading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Create Account")),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          children: [
-            const LinearProgressIndicator(value: 1/6),
-            const SizedBox(height: 32),
-            const TextField(decoration: InputDecoration(labelText: "Full Name")),
-            const SizedBox(height: 16),
-            const TextField(decoration: InputDecoration(labelText: "Email")),
-            const SizedBox(height: 16),
-            const TextField(decoration: InputDecoration(labelText: "Password"), obscureText: true),
-            const Spacer(),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => context.goNamed(RouteNames.faceUpload),
-                child: const Text("Continue"),
-              ),
+      backgroundColor: PresntTokens.surface,
+      body: Stack(
+        children: [
+          Positioned(
+            top: -60,
+            left: -40,
+            child: _blob(PresntTokens.primary.withValues(alpha: 0.06)),
+          ),
+          Positioned(
+            bottom: -50,
+            right: -30,
+            child: _blob(PresntTokens.secondary.withValues(alpha: 0.06)),
+          ),
+          SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => context.pop(),
+                        icon: const Icon(Icons.arrow_back_rounded, color: PresntTokens.primary),
+                      ),
+                      Expanded(
+                        child: Text(
+                          'Create Account',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.manrope(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: PresntTokens.onSurface,
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Text(
+                          'STEP 1 OF 6',
+                          style: GoogleFonts.inter(
+                            fontSize: 9,
+                            letterSpacing: 2,
+                            color: PresntTokens.outline,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const PresntOnboardingProgress(step: 1, rightLabel: 'Account'),
+                        const SizedBox(height: 32),
+                        Text.rich(
+                          TextSpan(
+                            style: GoogleFonts.manrope(
+                              fontSize: 36,
+                              fontWeight: FontWeight.w800,
+                              height: 1.05,
+                              letterSpacing: -1.2,
+                              color: PresntTokens.onSurface,
+                            ),
+                            children: const [
+                              TextSpan(text: 'Start your\n'),
+                              TextSpan(
+                                text: 'presence.',
+                                style: TextStyle(color: PresntTokens.primary),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Enter your details to begin crafting your high-fidelity AI persona.',
+                          style: GoogleFonts.manrope(
+                            fontSize: 15,
+                            height: 1.5,
+                            color: PresntTokens.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 36),
+                        _LabeledField(
+                          label: 'FULL NAME',
+                          controller: _nameController,
+                          hint: 'Alexander Voss',
+                          icon: Icons.person_outline_rounded,
+                        ),
+                        const SizedBox(height: 20),
+                        _LabeledField(
+                          label: 'EMAIL ADDRESS',
+                          controller: _emailController,
+                          hint: 'you@example.com',
+                          icon: Icons.alternate_email_rounded,
+                          keyboard: TextInputType.emailAddress,
+                        ),
+                        const SizedBox(height: 20),
+                        _LabeledField(
+                          label: 'PASSWORD',
+                          controller: _passwordController,
+                          hint: '••••••••••••',
+                          icon: Icons.lock_outline_rounded,
+                          obscure: _obscure,
+                          suffix: IconButton(
+                            icon: Icon(
+                              _obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                              color: PresntTokens.surfaceBright,
+                            ),
+                            onPressed: () => setState(() => _obscure = !_obscure),
+                          ),
+                        ),
+                        if (_error != null) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            _error!,
+                            style: GoogleFonts.manrope(color: PresntTokens.tertiaryContainer, fontSize: 13),
+                          ),
+                        ],
+                        const SizedBox(height: 28),
+                        if (_loading)
+                          const Center(child: CircularProgressIndicator(color: PresntTokens.primary))
+                        else
+                          PresntGradientCta(
+                            label: 'Continue',
+                            trailing: const Icon(Icons.east_rounded, color: PresntTokens.onPrimaryFixed),
+                            onPressed: _continue,
+                          ),
+                        const SizedBox(height: 20),
+                        Text.rich(
+                          TextSpan(
+                            style: GoogleFonts.inter(fontSize: 11, color: PresntTokens.outline, height: 1.4),
+                            children: const [
+                              TextSpan(text: 'By continuing, you agree to our '),
+                              TextSpan(
+                                text: 'Terms of Service',
+                                style: TextStyle(
+                                  color: PresntTokens.primary,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ],
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _blob(Color c) {
+    return IgnorePointer(
+      child: Container(
+        width: 220,
+        height: 220,
+        decoration: BoxDecoration(shape: BoxShape.circle, color: c),
+      ),
+    );
+  }
+}
+
+class _LabeledField extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final String hint;
+  final IconData icon;
+  final TextInputType? keyboard;
+  final bool obscure;
+  final Widget? suffix;
+
+  const _LabeledField({
+    required this.label,
+    required this.controller,
+    required this.hint,
+    required this.icon,
+    this.keyboard,
+    this.obscure = false,
+    this.suffix,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              letterSpacing: 2,
+              fontWeight: FontWeight.w600,
+              color: PresntTokens.outline,
+            ),
+          ),
+        ),
+        TextField(
+          controller: controller,
+          keyboardType: keyboard,
+          obscureText: obscure,
+          style: GoogleFonts.manrope(color: PresntTokens.onSurface, fontSize: 16),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(color: PresntTokens.surfaceBright.withValues(alpha: 0.7)),
+            filled: true,
+            fillColor: const Color(0xFF1A1A1A),
+            suffixIcon: suffix ??
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Icon(icon, color: PresntTokens.surfaceBright.withValues(alpha: 0.6)),
+                ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: PresntTokens.ctaPurple, width: 2),
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          ),
+        ),
+      ],
     );
   }
 }

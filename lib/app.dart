@@ -4,7 +4,7 @@ import 'routes/app_router.dart';
 import 'theme/app_theme.dart';
 
 class PresntApp extends ConsumerWidget {
-  const PresntApp({Key? key}) : super(key: key);
+  const PresntApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

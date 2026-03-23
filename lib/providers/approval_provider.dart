@@ -6,15 +6,19 @@ import '../services/biometric_service.dart';
 final tokenServiceProvider = Provider((ref) => TokenService());
 final biometricServiceProvider = Provider((ref) => BiometricService());
 
-final pendingApprovalsProvider = StateNotifierProvider<ApprovalNotifier, List<AuthorizationToken>>((ref) {
-  return ApprovalNotifier(ref.watch(tokenServiceProvider), ref.watch(biometricServiceProvider));
-});
+final pendingApprovalsProvider =
+    NotifierProvider<ApprovalNotifier, List<AuthorizationToken>>(ApprovalNotifier.new);
 
-class ApprovalNotifier extends StateNotifier<List<AuthorizationToken>> {
-  final TokenService _tokenService;
-  final BiometricService _biometricService;
+class ApprovalNotifier extends Notifier<List<AuthorizationToken>> {
+  late final TokenService _tokenService;
+  late final BiometricService _biometricService;
 
-  ApprovalNotifier(this._tokenService, this._biometricService) : super([]);
+  @override
+  List<AuthorizationToken> build() {
+    _tokenService = ref.watch(tokenServiceProvider);
+    _biometricService = ref.watch(biometricServiceProvider);
+    return [];
+  }
 
   Future<void> mockIncomingRequest(String accountId, String sessionId, String credentialType) async {
     final token = await _tokenService.generateToken(accountId, sessionId, credentialType);
@@ -39,5 +43,25 @@ class ApprovalNotifier extends StateNotifier<List<AuthorizationToken>> {
       return true;
     }
     return false;
+  }
+
+  void denyRequest(String tokenId) {
+    state = state.map((t) {
+      if (t.tokenId != tokenId) {
+        return t;
+      }
+      return AuthorizationToken(
+        tokenId: t.tokenId,
+        accountId: t.accountId,
+        sessionId: t.sessionId,
+        credentialType: t.credentialType,
+        issuedAt: t.issuedAt,
+        expiresAt: t.expiresAt,
+        timeoutSeconds: t.timeoutSeconds,
+        used: false,
+        invalidated: true,
+        biometricRef: t.biometricRef,
+      );
+    }).toList();
   }
 }

@@ -4,13 +4,16 @@ import '../services/session_service.dart';
 
 final sessionServiceProvider = Provider((ref) => SessionService());
 
-final currentSessionProvider = StateNotifierProvider<SessionNotifier, SessionModel?>((ref) {
-  return SessionNotifier(ref.watch(sessionServiceProvider));
-});
+final currentSessionProvider = NotifierProvider<SessionNotifier, SessionModel?>(SessionNotifier.new);
 
-class SessionNotifier extends StateNotifier<SessionModel?> {
-  final SessionService _sessionService;
-  SessionNotifier(this._sessionService) : super(null);
+class SessionNotifier extends Notifier<SessionModel?> {
+  late final SessionService _sessionService;
+
+  @override
+  SessionModel? build() {
+    _sessionService = ref.watch(sessionServiceProvider);
+    return null;
+  }
 
   Future<void> startSession(String avatarId, String contactName) async {
     final session = await _sessionService.startLiveSession(avatarId, contactName);

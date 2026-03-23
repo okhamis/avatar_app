@@ -2,29 +2,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/avatar_model.dart';
 import '../services/heygen_service.dart';
 import '../services/elevenlabs_service.dart';
-import '../services/claude_service.dart';
+import '../services/gemini_service.dart';
 
 final heygenProvider = Provider((ref) => HeyGenService());
 final elevenlabsProvider = Provider((ref) => ElevenLabsService());
-final claudeProvider = Provider((ref) => ClaudeService());
+final geminiProvider = Provider((ref) => GeminiService());
 
 final avatarProvider = NotifierProvider<AvatarNotifier, AvatarModel?>(AvatarNotifier.new);
 
 class AvatarNotifier extends Notifier<AvatarModel?> {
   late final HeyGenService _heyGen;
   late final ElevenLabsService _elevenLabs;
-  late final ClaudeService _claude;
+  late final GeminiService _gemini;
 
   @override
   AvatarModel? build() {
     _heyGen = ref.watch(heygenProvider);
     _elevenLabs = ref.watch(elevenlabsProvider);
-    _claude = ref.watch(claudeProvider);
+    _gemini = ref.watch(geminiProvider);
     return null;
   }
 
   Future<void> createAvatar(String ownerId) async {
-    await _claude.trainBehavior({});
+    await _gemini.trainBehavior({});
     await _elevenLabs.cloneVoice('mock_recording_path.m4a');
     await _heyGen.trainFaceModel(const <String>[]);
     await Future.delayed(const Duration(seconds: 2));

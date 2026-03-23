@@ -1,10 +1,13 @@
 import '../models/approval_token_model.dart';
+import 'package:uuid/uuid.dart';
 
 class TokenService {
+  final Uuid _uuid = const Uuid();
+
   Future<AuthorizationToken> generateToken(String accountId, String sessionId, String credentialType) async {
     await Future.delayed(const Duration(seconds: 1));
     return AuthorizationToken(
-      tokenId: "token_123",
+      tokenId: _uuid.v4(),
       accountId: accountId,
       sessionId: sessionId,
       credentialType: credentialType,
