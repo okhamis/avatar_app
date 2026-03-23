@@ -16,24 +16,74 @@ class AuthNotifier extends Notifier<UserModel?> {
     return null;
   }
 
+  Future<void> restoreSessionUser() async {
+    User? firebaseUser;
+    try {
+      firebaseUser = FirebaseAuth.instance.currentUser;
+    } on FirebaseException catch (e) {
+      if (e.code == 'no-app') {
+        state = null;
+        return;
+      }
+      rethrow;
+    }
+    if (firebaseUser == null) {
+      state = null;
+      return;
+    }
+    try {
+      state = await _firebaseService.getUserProfile(firebaseUser.uid);
+    } on FirebaseException catch (e) {
+      if (e.code == 'not-found') {
+        state = UserModel(uid: firebaseUser.uid, email: firebaseUser.email ?? '', fullName: firebaseUser.displayName ?? 'User');
+        await _firebaseService.saveUserProfile(state!);
+        return;
+      }
+      rethrow;
+    }
+  }
+
   Future<void> login(String email, String password) async {
     try {
       final credential = await _firebaseService.signInWithEmail(email, password);
       if (credential.user?.uid != null) {
-        final user = await _firebaseService.getUserProfile(credential.user!.uid);
-        state = user;
+        try {
+          final user = await _firebaseService.getUserProfile(credential.user!.uid);
+          state = user;
+        } catch (profileErr) {
+          debugPrint('Firestore profile fetch failed, using basic user: $profileErr');
+          state = UserModel(
+            uid: credential.user!.uid,
+            email: credential.user!.email ?? email,
+            fullName: credential.user!.displayName ?? 'User',
+          );
+        }
         return;
       }
+      if (!kDebugMode) {
+        throw Exception('Login failed. Please try again.');
+      }
     } on FirebaseAuthException catch (e) {
-      // Keep login resilient in offline/dev misconfig scenarios.
-      // Auth failures intentionally fall back to a mock session.
-      debugPrint('Login auth error, using mock user: ${e.code}');
+      debugPrint('Login FirebaseAuthException [${e.code}]: ${e.message}');
+      if (!kDebugMode) {
+        throw Exception(_friendlyAuthMessage(e));
+      }
     } on FirebaseException catch (e) {
-      debugPrint('Login Firebase error, using mock user: ${e.code}');
+      debugPrint('Login FirebaseException [${e.code}]: ${e.message}');
+      if (!kDebugMode) {
+        throw Exception(_friendlyFirebaseMessage(e));
+      }
     } catch (e) {
-      debugPrint('Login error, using mock user: $e');
+      debugPrint('Login unexpected error [${e.runtimeType}]: $e');
+      if (!kDebugMode) {
+        throw Exception('Login failed. Please try again.');
+      }
     }
-    state = UserModel(uid: 'mock_uid', email: email, fullName: 'Demo User');
+    if (kDebugMode) {
+      state = UserModel(uid: 'mock_uid', email: email, fullName: 'Demo User');
+      return;
+    }
+    throw Exception('Login failed. Please try again.');
   }
 
   Future<void> createAccount(String fullName, String email, String password) async {
@@ -46,19 +96,77 @@ class AuthNotifier extends Notifier<UserModel?> {
       }
 
       final user = UserModel(uid: uid, email: email, fullName: fullName);
-      await _firebaseService.saveUserProfile(user);
+      try {
+        await _firebaseService.saveUserProfile(user);
+      } catch (firestoreErr) {
+        debugPrint('Firestore save failed (continuing with local state): $firestoreErr');
+      }
       state = user;
     } on FirebaseAuthException catch (e) {
+      debugPrint('createAccount FirebaseAuthException [${e.code}]: ${e.message}');
+      if (kDebugMode) {
+        state = UserModel(
+          uid: 'mock_${DateTime.now().millisecondsSinceEpoch}',
+          email: email,
+          fullName: fullName,
+        );
+        return;
+      }
       throw Exception(_friendlyAuthMessage(e));
     } on FirebaseException catch (e) {
+      debugPrint('createAccount FirebaseException [${e.code}]: ${e.message}');
+      if (kDebugMode) {
+        state = UserModel(
+          uid: 'mock_${DateTime.now().millisecondsSinceEpoch}',
+          email: email,
+          fullName: fullName,
+        );
+        return;
+      }
       throw Exception(_friendlyFirebaseMessage(e));
     } catch (e) {
-      throw Exception('Account creation failed. ${e.toString()}');
+      debugPrint('createAccount unexpected error [${e.runtimeType}]: $e');
+      if (kDebugMode) {
+        state = UserModel(
+          uid: 'mock_${DateTime.now().millisecondsSinceEpoch}',
+          email: email,
+          fullName: fullName,
+        );
+        return;
+      }
+      throw Exception('Account creation failed. Please try again.');
     }
   }
   
-  void logout() {
+  Future<void> logout() async {
+    await _firebaseService.signOut();
     state = null;
+  }
+
+  Future<void> updateTrainingFlags({
+    bool? hasFaceTrained,
+    bool? hasVoiceCloned,
+    bool? hasBehaviorTrained,
+    bool? isLive,
+  }) async {
+    final user = state;
+    if (user == null) return;
+    final updated = user.copyWith(
+      hasFaceTrained: hasFaceTrained ?? user.hasFaceTrained,
+      hasVoiceCloned: hasVoiceCloned ?? user.hasVoiceCloned,
+      hasBehaviorTrained: hasBehaviorTrained ?? user.hasBehaviorTrained,
+      isLive: isLive ?? user.isLive,
+    );
+    state = updated;
+    try {
+      await _firebaseService.saveUserProfile(updated);
+    } on FirebaseException catch (e) {
+      if (kDebugMode && e.code == 'no-app') {
+        debugPrint('Skipping Firebase training flag save in debug mode.');
+        return;
+      }
+      rethrow;
+    }
   }
 
   String _friendlyAuthMessage(FirebaseAuthException e) {
@@ -73,6 +181,8 @@ class AuthNotifier extends Notifier<UserModel?> {
         return 'Email/password sign-up is not enabled in Firebase.';
       case 'network-request-failed':
         return 'Network error. Please check your internet connection.';
+      case 'internal-error':
+        return 'Authentication backend rejected the request. Verify Firebase Authentication is enabled for Email/Password and try again.';
       default:
         return e.message ?? 'Account creation failed. Please try again.';
     }

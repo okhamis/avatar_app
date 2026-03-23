@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -175,6 +176,11 @@ class _FaceUploadScreenState extends ConsumerState<FaceUploadScreen> {
                             context.goNamed(RouteNames.voiceRecord);
                           } catch (_) {
                             if (!context.mounted) return;
+                            if (kDebugMode) {
+                              // Keep local demo flow unblocked when backend wiring is absent.
+                              context.goNamed(RouteNames.voiceRecord);
+                              return;
+                            }
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text('We could not process photos right now. Please try again.')),
                             );

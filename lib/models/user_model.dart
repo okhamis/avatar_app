@@ -36,4 +36,27 @@ class UserModel {
       isLive: isLive ?? this.isLive,
     );
   }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'email': email,
+      'fullName': fullName,
+      'hasFaceTrained': hasFaceTrained,
+      'hasVoiceCloned': hasVoiceCloned,
+      'hasBehaviorTrained': hasBehaviorTrained,
+      'isLive': isLive,
+    };
+  }
+
+  factory UserModel.fromMap(String uid, Map<String, dynamic> data) {
+    return UserModel(
+      uid: uid,
+      email: (data['email'] as String?) ?? '',
+      fullName: (data['fullName'] as String?) ?? 'Unknown User',
+      hasFaceTrained: (data['hasFaceTrained'] as bool?) ?? false,
+      hasVoiceCloned: (data['hasVoiceCloned'] as bool?) ?? false,
+      hasBehaviorTrained: (data['hasBehaviorTrained'] as bool?) ?? false,
+      isLive: (data['isLive'] as bool?) ?? false,
+    );
+  }
 }

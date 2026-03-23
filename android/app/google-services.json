@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1058350892241",
+    "project_id": "aidigitaltwin-907df",
+    "storage_bucket": "aidigitaltwin-907df.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1058350892241:android:a726f47c838b78485f31f0",
+        "android_client_info": {
+          "package_name": "com.example.aidigitaltwin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD3f0rFSTGQVSSKYEb96Q1h2vn9pl5PjfM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

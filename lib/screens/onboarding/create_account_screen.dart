@@ -96,7 +96,13 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                   child: Row(
                     children: [
                       IconButton(
-                        onPressed: () => context.pop(),
+                        onPressed: () {
+                          if (context.canPop()) {
+                            context.pop();
+                          } else {
+                            context.goNamed(RouteNames.welcome);
+                          }
+                        },
                         icon: const Icon(Icons.arrow_back_rounded, color: PresntTokens.primary),
                       ),
                       Expanded(

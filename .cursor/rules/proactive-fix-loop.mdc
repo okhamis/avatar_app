@@ -1,0 +1,23 @@
+---
+description: Automatically find and fix issues after validation
+alwaysApply: true
+---
+
+# Proactive Fix Loop
+
+For any implementation or bug-fix task:
+
+1. Run validation (`flutter analyze`, tests, and runtime checks when relevant).
+2. If issues are detected, immediately fix them.
+3. Re-run validation.
+4. Continue until clean or blocked by external dependency.
+
+## External Blocker Rule
+
+User input is required only for:
+- interactive authentication/login
+- secrets/credentials not available in repo
+- permission approvals outside workspace
+- explicit product/UX tradeoff decisions
+
+Do not wait for user action to start issue remediation when code changes can be made directly.

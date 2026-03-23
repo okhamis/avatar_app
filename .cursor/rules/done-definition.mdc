@@ -23,3 +23,37 @@ Do not mark a fix complete until all are true:
   - Next action
 
 If any blocker remains, status must be partially fixed, not fixed.
+
+# Mandatory Pre-Done Checklist
+
+Before using the word "fixed", explicitly confirm all:
+
+- Branch coverage check for touched logic:
+  - happy path
+  - null/empty edge case path
+  - exception/error path
+  - debug vs production behavior when relevant
+- Contract check for changed calls:
+  - called symbol exists
+  - signature matches call site
+  - await/async usage is correct
+- Security fail-closed check:
+  - no production auth bypass
+  - no silent fallback to privileged/mock identity in release
+- Runtime verification for user-facing behavior changes:
+  - flow executed in app/runtime logs, not analyze/tests alone
+
+If any checklist item is not validated, report "not fully fixed".
+
+# Proactive Iteration Requirement
+
+After running checks/tests, the agent must proactively continue:
+
+- If any issue is found, immediately fix it without waiting for user action.
+- Re-run relevant checks after each fix.
+- Repeat until checks are clean or a true external blocker exists.
+- Only pause for user input when:
+  - credentials/interactive login/permissions are required, or
+  - a product decision is needed.
+
+Never ask the user to click "Find issues" or "Fix all" as a prerequisite for action.

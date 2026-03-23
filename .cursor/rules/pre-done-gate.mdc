@@ -1,0 +1,40 @@
+---
+description: Hard pre-done quality gate before claiming a fix
+alwaysApply: true
+---
+
+# Pre-Done Gate (Hard Stop)
+
+Never claim a task is fixed until this gate passes.
+
+## 1) Logic Path Matrix
+
+For each edited method, verify:
+- Success path
+- Null/empty/unexpected return path
+- Exception path
+- Environment mode path (debug vs release), if behavior differs
+
+## 2) Call-Site Contract Validation
+
+For each new or changed method invocation, verify:
+- Method exists in target class/service
+- Parameter count/types match
+- Return type handling is correct
+- Async calls are properly awaited or intentionally unawaited
+
+## 3) Security Blocking Checks
+
+For auth/identity/config changes, verify:
+- Production path fails closed on auth errors
+- No mock or fallback identity in release mode
+- No sensitive internal errors exposed to end users
+
+## 4) Verification Evidence
+
+Must include:
+- Static analysis result
+- Test result
+- Runtime/flow validation result for changed behavior
+
+If any item is missing, final status must be "partially fixed" or "blocked".
