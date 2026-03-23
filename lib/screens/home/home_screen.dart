@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../../routes/route_names.dart';
 import '../../widgets/avatar_display.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -41,7 +43,7 @@ class HomeScreen extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () {},
+                onPressed: () => context.pushNamed(RouteNames.liveConversation),
                 icon: const Icon(Icons.chat),
                 label: const Text("Start Conversation"),
               ),
