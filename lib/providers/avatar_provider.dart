@@ -8,22 +8,25 @@ final heygenProvider = Provider((ref) => HeyGenService());
 final elevenlabsProvider = Provider((ref) => ElevenLabsService());
 final claudeProvider = Provider((ref) => ClaudeService());
 
-final avatarProvider = StateNotifierProvider<AvatarNotifier, AvatarModel?>((ref) {
-  return AvatarNotifier(
-    ref.watch(heygenProvider),
-    ref.watch(elevenlabsProvider),
-    ref.watch(claudeProvider),
-  );
-});
+final avatarProvider = NotifierProvider<AvatarNotifier, AvatarModel?>(AvatarNotifier.new);
 
-class AvatarNotifier extends StateNotifier<AvatarModel?> {
-  final HeyGenService heyGen;
-  final ElevenLabsService elevenLabs;
-  final ClaudeService claude;
+class AvatarNotifier extends Notifier<AvatarModel?> {
+  late final HeyGenService _heyGen;
+  late final ElevenLabsService _elevenLabs;
+  late final ClaudeService _claude;
 
-  AvatarNotifier(this.heyGen, this.elevenLabs, this.claude) : super(null);
+  @override
+  AvatarModel? build() {
+    _heyGen = ref.watch(heygenProvider);
+    _elevenLabs = ref.watch(elevenlabsProvider);
+    _claude = ref.watch(claudeProvider);
+    return null;
+  }
 
   Future<void> createAvatar(String ownerId) async {
+    await _claude.trainBehavior({});
+    await _elevenLabs.cloneVoice('mock_recording_path.m4a');
+    await _heyGen.trainFaceModel(const <String>[]);
     await Future.delayed(const Duration(seconds: 2));
     state = AvatarModel(
       avatarId: "avatar_123",
