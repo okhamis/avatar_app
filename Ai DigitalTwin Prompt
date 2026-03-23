@@ -1,0 +1,422 @@
+The project is at /Users/okhamis/Desktop/avatar_app. Build everything inside this existing Flutter project.
+
+You are building "Presnt" — an AI personal avatar app where a digital twin of the user looks like them, sounds like them, behaves like them, and acts on their behalf when they are unavailable.
+
+PRODUCT VISION
+
+The avatar:
+- looks like the user
+- sounds like the user
+- behaves like the user
+- acts on the user's behalf for delegated actions
+- requests biometric approval for sensitive actions
+- can be accessed by designated family members
+- supports posthumous continuity settings
+
+TECH STACK
+
+- Flutter + Dart (iOS and Android)
+- Claude API (behavioral model and response generation)
+- ElevenLabs API (voice cloning and text to speech)
+- HeyGen API (avatar face generation / preview integration)
+- Firebase (Firestore, Authentication, Cloud Messaging)
+- http package for API calls
+- local biometric auth for Face ID / Touch ID approvals
+- flutter_secure_storage for encrypted local secrets and sensitive local references
+
+IMPORTANT ENGINEERING RULES
+
+- Build the app with real Flutter code, not pseudocode
+- Use mock data and placeholder integrations by default, but structure all services and models so real APIs can be plugged in later without changing UI architecture
+- Do not hardcode secrets or API keys
+- Do not log raw credential values, payment details, IDs, or other sensitive data
+- Only masked credential values may appear in UI and logs
+- Biometric approval must be required before sensitive credential access
+- Use dark theme across the full app
+- Keep code organized, readable, and ready to run
+- Use a single consistent state management approach: Riverpod
+- Use named routes or a clearly defined centralized navigation structure
+- Add loading, empty, success, and error states to every important screen
+- If a live API feature is not practical in the initial build, implement it as a clean placeholder flow with mock service responses
+
+REAL VS PLACEHOLDER BEHAVIOR
+
+For this build:
+- Firebase Auth: real structure
+- Firestore: real structure with mock/demo data support
+- Claude: service wrapper + mock responses
+- ElevenLabs: service wrapper + mock responses
+- HeyGen: service wrapper + avatar preview placeholder
+- Twilio / phone calling: placeholder only, not real calling yet
+- Healthcare booking / email / external integrations: placeholder only
+- Live conversations: simulated live session UI using mock transcript streaming, not actual phone infrastructure
+
+APP ARCHITECTURE
+
+Use this folder structure:
+
+lib/
+  main.dart
+  app.dart
+  routes/
+    app_router.dart
+    route_names.dart
+  theme/
+    app_theme.dart
+    app_colors.dart
+  core/
+    constants/
+    utils/
+    errors/
+  screens/
+    onboarding/
+      welcome_screen.dart
+      create_account_screen.dart
+      face_upload_screen.dart
+      voice_record_screen.dart
+      behavioral_training_screen.dart
+      avatar_preview_screen.dart
+      go_live_screen.dart
+    home/
+      home_screen.dart
+    conversations/
+      conversation_list_screen.dart
+      live_conversation_screen.dart
+      transcript_detail_screen.dart
+    approvals/
+      pending_approvals_screen.dart
+      approval_history_screen.dart
+    family/
+      family_members_screen.dart
+      access_tiers_screen.dart
+      posthumous_settings_screen.dart
+    settings/
+      avatar_setup_screen.dart
+      action_policies_screen.dart
+      credentials_vault_screen.dart
+      integrations_screen.dart
+  services/
+    claude_service.dart
+    elevenlabs_service.dart
+    heygen_service.dart
+    firebase_service.dart
+    biometric_service.dart
+    session_service.dart
+    token_service.dart
+  models/
+    user_model.dart
+    avatar_model.dart
+    session_model.dart
+    approval_token_model.dart
+    policy_record_model.dart
+    family_member_model.dart
+    credential_model.dart
+    posthumous_consent_model.dart
+  providers/
+    auth_provider.dart
+    avatar_provider.dart
+    session_provider.dart
+    approval_provider.dart
+    family_provider.dart
+    settings_provider.dart
+  widgets/
+    avatar_display.dart
+    approval_card.dart
+    conversation_tile.dart
+    family_member_tile.dart
+    policy_toggle.dart
+    credential_tile.dart
+
+DESIGN SYSTEM
+
+- Background: #0A0A0A
+- Surface: #1A1A1A
+- Primary accent: #7F77DD
+- Secondary accent: #5DCAA5
+- Danger: #E24B4A
+- Text primary: #FFFFFF
+- Text secondary: #888780
+- Status active: #5DCAA5
+- Status sleeping: #888780
+- Status busy: #EF9F27
+- Border radius: 12px
+- Font: system default
+- All screens dark theme
+
+NAVIGATION
+
+STATE 1 — ONBOARDING
+No bottom navigation.
+Flow:
+Welcome → Create Account → Face Upload → Voice Record → Behavioral Training → Avatar Preview → Go Live
+
+STATE 2 — MAIN APP
+Bottom nav with 5 tabs:
+1. Home
+2. Conversations
+3. Approvals
+4. Family
+5. Settings
+
+SCREEN REQUIREMENTS
+
+SCREEN 1 — WELCOME
+- Presnt logo centered
+- Tagline: "Your AI Self. Always Available."
+- Subtitle: "The first personal avatar that looks like you, sounds like you, and acts for you."
+- Get Started button
+- Sign In link at bottom
+
+SCREEN 2 — CREATE ACCOUNT
+- Full name
+- Email
+- Password
+- Continue button
+- Progress indicator step 1 of 6
+
+SCREEN 3 — FACE UPLOAD
+- Title: "Let's build your face"
+- Instruction for 5 to 10 photos
+- Upload grid
+- Camera button
+- Gallery button
+- Tips section
+- Continue active when minimum upload count is reached
+- Progress indicator step 2 of 6
+
+SCREEN 4 — VOICE RECORD
+- Title: "Let's capture your voice"
+- Instruction for reading sample text
+- Large microphone button
+- Waveform animation
+- Playback
+- Re-record
+- Continue
+- Progress indicator step 3 of 6
+
+SCREEN 5 — BEHAVIORAL TRAINING
+Questions with text input:
+1. How would you describe your communication style?
+2. What are your core values?
+3. How do you typically respond when someone asks for a favor?
+4. What are your priorities in life?
+5. How do you make decisions?
+- Continue
+- Progress indicator step 4 of 6
+
+SCREEN 6 — AVATAR PREVIEW
+- Title: "Meet your avatar"
+- Avatar preview player or placeholder
+- Avatar says: "Hi, I am your Presnt avatar. I am ready to represent you."
+- Fidelity score display
+- Approve and Go Live button
+- Re-train option
+
+SCREEN 7 — GO LIVE
+- Success state
+- Title: "You are live"
+- Subtitle: "Your avatar is ready to represent you"
+- Summary of face trained, voice cloned, personality modeled
+- Enter Presnt button
+
+TAB 1 — HOME
+- App bar with Presnt and settings icon
+- Large centered avatar display
+- Status indicator
+- User name
+- Subtitle: "Your Personal AI Avatar"
+- Stats row
+- Last action card
+- Start Conversation button
+
+TAB 2 — CONVERSATIONS
+
+Conversation list:
+- Filters: All / Active / Completed
+- Tile shows contact name, time, duration, outcome tag
+
+Live conversation:
+- Avatar video/feed area
+- Simulated live transcript stream
+- Participant label
+- Duration timer
+- Take Over button
+- End Session button
+- Pending approval banner when needed
+
+Transcript detail:
+- Full transcript
+- Avatar and contact labels
+- Actions taken
+- Credentials released section with masked values only
+- Audit trail with timestamps
+
+TAB 3 — APPROVALS
+
+Pending approvals:
+- Badge count
+- Each card shows urgency, requester, request type, masked preview, session ID, approve, deny, timeout policy
+- Approve must trigger biometric flow
+
+Approval history:
+- Approved / Denied / Expired filters
+- Item shows requester, credential type, outcome, timestamp
+
+TAB 4 — FAMILY
+
+Family members:
+- Member list with photo, name, access tier
+- Add Family Member button
+
+Access tiers:
+- Tier 1: avatar responds autonomously
+- Tier 2: avatar responds and notifies user
+- Tier 3: avatar waits for approval
+- Blocked: avatar refuses request
+
+Posthumous settings:
+- Enable posthumous mode toggle with biometric
+- Beneficiaries list
+- Trusted overseer field
+- Blocked posthumous actions list
+- Consent signature state
+- Hash / immutability notice
+
+TAB 5 — SETTINGS
+
+Avatar setup:
+- Fidelity score
+- Update face photos
+- Re-record voice
+- Update behavioral training
+- Correction queue
+- Avatar version history
+
+Action policies:
+- Policy table list
+- Tier edit controls
+- Lowering a tier requires biometric
+- Permanently blocked actions section
+- Domain override floor notice
+
+Credentials vault:
+- List of stored credentials
+- Add credential
+- Masked preview only
+- Delete credential
+- Biometric gate before sensitive access
+
+Integrations:
+- Google Calendar connect/disconnect
+- Apple Calendar connect/disconnect
+- Phone calls coming soon
+- Healthcare booking coming soon
+- Email coming soon
+
+KEY DATA MODELS
+
+AuthorizationToken {
+  token_id: String
+  account_id: String
+  session_id: String
+  credential_type: String
+  issued_at: DateTime
+  expires_at: DateTime
+  timeout_seconds: int
+  used: bool
+  invalidated: bool
+  biometric_ref: String
+}
+
+PolicyRecord {
+  record_id: String
+  account_id: String
+  action_type: String
+  default_tier: int
+  user_override_tier: int?
+  domain_override_tier: int?
+  permanently_blocked: bool
+  timeout_seconds: int
+  override_history: List
+}
+
+PosthumousConsentRecord {
+  record_id: String
+  account_id: String
+  signed_at: DateTime
+  digital_signature: String
+  record_hash: String
+  immutable_after_death: bool
+  beneficiaries: List
+  blocked_actions: List
+  trusted_overseer_id: String?
+  overseer_response_hours: int
+  default_on_no_response: String
+}
+
+FamilyMember {
+  member_id: String
+  account_id: String
+  name: String
+  relationship: String
+  access_tier: int
+  photo_url: String?
+  added_at: DateTime
+  last_activity: DateTime?
+}
+
+CredentialModel {
+  credential_id: String
+  account_id: String
+  credential_type: String
+  masked_preview: String
+  encrypted_reference: String
+  created_at: DateTime
+  updated_at: DateTime
+}
+
+IMPORTANT FLOWS
+
+APPROVAL FLOW
+1. Third party asks avatar for a credential during live session
+2. Avatar generates holding response
+3. Push notification sent to user device
+4. User sees masked credential preview and requester identity
+5. User approves with biometric auth
+6. Single-use session-scoped token generated
+7. Credential released only within active session
+8. Token invalidated after use
+9. Audit record created
+
+ACTION TIER FLOW
+- Tier 1: avatar executes autonomously
+- Tier 2: avatar executes and sends notification
+- Tier 3: avatar waits for approval
+- Blocked: avatar refuses and logs
+
+STORAGE RULES
+
+- Firestore stores user profile metadata, family members, sessions, policies, logs, masked previews, and configuration
+- flutter_secure_storage stores sensitive local references and secrets
+- raw credentials must not be stored in Firestore in plain text
+- transcript UI must never expose unmasked credential data
+- logs must contain masked or structured references only
+
+DELIVERABLES
+
+Build the full Flutter project structure and code for:
+- app entry
+- routing
+- theme
+- all screens
+- widgets
+- providers
+- models
+- service wrappers
+- mock service responses
+- navigation flows
+- empty/loading/error states
+
+Make the code organized and runnable with placeholder integrations.
+
+Do not give only a plan. Start writing the actual code files.
