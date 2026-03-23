@@ -1,6 +1,7 @@
 class RouteNames {
   // Onboarding
   static const String welcome = 'welcome';
+  static const String signIn = 'signIn';
   static const String createAccount = 'createAccount';
   static const String faceUpload = 'faceUpload';
   static const String voiceRecord = 'voiceRecord';
