@@ -1,4 +1,4 @@
-# avatar_app
+# AiDigitalTwin
 
 A new Flutter project.
 

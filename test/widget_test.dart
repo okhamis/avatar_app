@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:avatar_app/app.dart';
+import 'package:ai_digital_twin/app.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 void main() {
