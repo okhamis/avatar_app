@@ -161,7 +161,7 @@ class WelcomeScreen extends StatelessWidget {
                   Container(height: 1, width: 48, color: PresntTokens.outlineVariant.withValues(alpha: 0.3)),
                   const SizedBox(height: 16),
                   TextButton(
-                    onPressed: () => context.goNamed(RouteNames.home),
+                    onPressed: () => context.goNamed(RouteNames.signIn),
                     child: Text(
                       'SIGN IN',
                       style: GoogleFonts.inter(

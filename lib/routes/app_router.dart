@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'route_names.dart';
 
 import '../screens/onboarding/welcome_screen.dart';
+import '../screens/onboarding/sign_in_screen.dart';
 import '../screens/onboarding/create_account_screen.dart';
 import '../screens/onboarding/face_upload_screen.dart';
 import '../screens/onboarding/voice_record_screen.dart';
@@ -43,6 +44,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       final path = state.uri.path;
       final onboardingPaths = <String>{
         '/welcome',
+        '/sign-in',
         '/create-account',
         '/face-upload',
         '/voice-record',
@@ -79,6 +81,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/welcome',
         name: RouteNames.welcome,
         builder: (context, state) => const WelcomeScreen(),
+      ),
+      GoRoute(
+        path: '/sign-in',
+        name: RouteNames.signIn,
+        builder: (context, state) => const SignInScreen(),
       ),
       GoRoute(
         path: '/create-account',
