@@ -11,6 +11,9 @@ class WelcomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final maxContent = w.clamp(0.0, 960.0);
+
     return Scaffold(
       backgroundColor: PresntTokens.backgroundLowest,
       body: Stack(
@@ -53,72 +56,95 @@ class WelcomeScreen extends StatelessWidget {
           ),
 
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(32, 48, 32, 24),
-              child: Column(
-                children: [
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Presnt',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.manrope(
-                            fontSize: 48,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -2,
-                            color: PresntTokens.primary,
-                            shadows: [
-                              Shadow(
-                                color: PresntTokens.primary.withValues(alpha: 0.35),
-                                blurRadius: 32,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 40),
-                        Text.rich(
-                          TextSpan(
-                            style: GoogleFonts.manrope(
-                              fontSize: 32,
-                              fontWeight: FontWeight.w800,
-                              height: 1.1,
-                              letterSpacing: -1,
-                              color: PresntTokens.onSurface,
-                            ),
-                            children: const [
-                              TextSpan(text: 'Your AI Self.\n'),
-                              TextSpan(
-                                text: 'Always Available.',
-                                style: TextStyle(color: PresntTokens.onSurfaceVariant),
-                              ),
-                            ],
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          'The first personal avatar that looks like you, sounds like you, and acts for you.',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.manrope(
-                            fontSize: 17,
-                            height: 1.45,
-                            color: PresntTokens.onSurfaceVariant.withValues(alpha: 0.85),
-                          ),
-                        ),
-                        const SizedBox(height: 40),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 320),
-                          child: PresntGradientCta(
-                            label: 'Get Started',
-                            trailing: const Icon(Icons.arrow_forward, color: PresntTokens.onPrimaryFixed),
-                            onPressed: () => context.goNamed(RouteNames.createAccount),
-                          ),
-                        ),
-                      ],
-                    ),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxContent),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    (w * 0.06).clamp(20.0, 56.0),
+                    32,
+                    (w * 0.06).clamp(20.0, 56.0),
+                    16,
                   ),
+                  child: Column(
+                    children: [
+                      // Scroll when the window is short (macOS default size); avoids RenderFlex overflow.
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return SingleChildScrollView(
+                              physics: const ClampingScrollPhysics(),
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      'Presnt',
+                                      textAlign: TextAlign.center,
+                                      style: GoogleFonts.manrope(
+                                        fontSize: (44 * (w / 390).clamp(1.0, 1.35)).clamp(40.0, 64.0),
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: -2,
+                                        color: PresntTokens.primary,
+                                        shadows: [
+                                          Shadow(
+                                            color: PresntTokens.primary.withValues(alpha: 0.35),
+                                            blurRadius: 32,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    SizedBox(height: (w / 390).clamp(1.0, 1.2) * 32),
+                                    Text.rich(
+                                      TextSpan(
+                                        style: GoogleFonts.manrope(
+                                          fontSize: (28 * (w / 390).clamp(1.0, 1.25)).clamp(26.0, 40.0),
+                                          fontWeight: FontWeight.w800,
+                                          height: 1.1,
+                                          letterSpacing: -1,
+                                          color: PresntTokens.onSurface,
+                                        ),
+                                        children: const [
+                                          TextSpan(text: 'Your AI Self.\n'),
+                                          TextSpan(
+                                            text: 'Always Available.',
+                                            style: TextStyle(color: PresntTokens.onSurfaceVariant),
+                                          ),
+                                        ],
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    SizedBox(height: (w / 390).clamp(1.0, 1.15) * 16),
+                                    Text(
+                                      'The first personal avatar that looks like you, sounds like you, and acts for you.',
+                                      textAlign: TextAlign.center,
+                                      style: GoogleFonts.manrope(
+                                        fontSize: (16 * (w / 390).clamp(1.0, 1.12)).clamp(15.0, 20.0),
+                                        height: 1.45,
+                                        color: PresntTokens.onSurfaceVariant.withValues(alpha: 0.85),
+                                      ),
+                                    ),
+                                    SizedBox(height: (w / 390).clamp(1.0, 1.15) * 28),
+                                    ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                        maxWidth: (w * 0.85).clamp(280.0, 420.0),
+                                      ),
+                                      child: PresntGradientCta(
+                                        label: 'Get Started',
+                                        trailing: const Icon(Icons.arrow_forward, color: PresntTokens.onPrimaryFixed),
+                                        onPressed: () => context.goNamed(RouteNames.createAccount),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
 
                   // Avatar anchor + pulse
                   _AvatarPulse(),
@@ -150,6 +176,8 @@ class WelcomeScreen extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
         ],
       ),
     );

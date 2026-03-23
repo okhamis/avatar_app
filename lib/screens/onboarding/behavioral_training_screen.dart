@@ -49,7 +49,7 @@ class _BehavioralTrainingScreenState extends ConsumerState<BehavioralTrainingScr
       final t = _controllers[i].text.trim();
       if (t.isNotEmpty) answers['q${i + 1}'] = t;
     }
-    await ref.read(geminiProvider).trainBehavior(answers);
+    await ref.read(behavioralLlmProvider).trainBehavior(answers);
     if (mounted) {
       setState(() => _loading = false);
       context.goNamed(RouteNames.avatarPreview);

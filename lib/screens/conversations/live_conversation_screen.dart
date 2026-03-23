@@ -83,8 +83,8 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
     }
 
     setState(() => _isTyping = true);
-    final gemini = ref.read(geminiProvider);
-    final response = await gemini.generateBehavioralResponse(text);
+    final llm = ref.read(behavioralLlmProvider);
+    final response = await llm.generateBehavioralResponse(text);
     if (mounted) {
       setState(() => _isTyping = false);
       _addMessage(response, isAvatar: true);
