@@ -17,32 +17,6 @@ class PendingApprovalsScreen extends ConsumerStatefulWidget {
 }
 
 class _PendingApprovalsScreenState extends ConsumerState<PendingApprovalsScreen> {
-  bool _isBootstrapping = true;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    Future.microtask(_bootstrap);
-  }
-
-  Future<void> _bootstrap() async {
-    try {
-      final existing = ref.read(pendingApprovalsProvider).where((t) => !t.used && !t.invalidated).toList();
-      if (existing.isEmpty) {
-        await ref.read(pendingApprovalsProvider.notifier).mockIncomingRequest('ac_1', 'sess_1', '****-****-4491');
-      }
-      if (mounted) setState(() => _isBootstrapping = false);
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _error = 'Failed to load pending approvals.';
-          _isBootstrapping = false;
-        });
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final approvals = ref.watch(pendingApprovalsProvider).where((t) => !t.used && !t.invalidated).toList();
@@ -133,34 +107,7 @@ class _PendingApprovalsScreenState extends ConsumerState<PendingApprovalsScreen>
             ),
           ),
           Expanded(
-            child: _isBootstrapping
-                ? const Center(child: CircularProgressIndicator(color: PresntTokens.primary))
-                : _error != null
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.error_outline, size: 48, color: AppColors.danger),
-                              const SizedBox(height: 12),
-                              Text(_error!, textAlign: TextAlign.center),
-                              const SizedBox(height: 16),
-                              ElevatedButton(
-                                onPressed: () {
-                                  setState(() {
-                                    _error = null;
-                                    _isBootstrapping = true;
-                                  });
-                                  _bootstrap();
-                                },
-                                child: const Text('Retry'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    : approvals.isEmpty
+            child: approvals.isEmpty
                         ? Center(
                             child: Column(
                               mainAxisSize: MainAxisSize.min,

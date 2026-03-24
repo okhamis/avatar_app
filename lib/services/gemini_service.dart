@@ -1,6 +1,8 @@
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter/foundation.dart';
+import '../config/app_config.dart';
+import '../config/llm_prompts.dart';
 import 'behavioral_llm.dart';
 
 class GeminiService implements BehavioralLlm {
@@ -15,9 +17,9 @@ class GeminiService implements BehavioralLlm {
 
     try {
       final model = GenerativeModel(
-        model: 'gemini-1.5-flash',
+        model: AppConfig.geminiModel,
         apiKey: apiKey,
-        systemInstruction: Content.system("You are an AI performing as the precise digital twin of the user. Adhere strictly to the conversation flow and context."),
+        systemInstruction: Content.system(kGeminiDigitalTwinSystemInstruction),
       );
 
       final response = await model.generateContent([

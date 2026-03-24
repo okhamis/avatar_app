@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../config/content_strings.dart';
 import '../../routes/route_names.dart';
 import '../../theme/presnt_tokens.dart';
 import '../../providers/auth_provider.dart';
@@ -51,9 +52,17 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
     });
 
     try {
+      debugPrint('[CREATE_ACCOUNT] Starting createAccount for $email');
       await ref.read(authProvider.notifier).createAccount(name, email, password);
-      if (mounted) context.goNamed(RouteNames.faceUpload);
+      debugPrint('[CREATE_ACCOUNT] createAccount completed successfully');
+      final user = ref.read(authProvider);
+      debugPrint('[CREATE_ACCOUNT] User state after create: uid=${user?.uid}, email=${user?.email}');
+      if (mounted) {
+        debugPrint('[CREATE_ACCOUNT] Navigating to faceUpload');
+        context.goNamed(RouteNames.faceUpload);
+      }
     } catch (e) {
+      debugPrint('[CREATE_ACCOUNT] ERROR caught in screen: [${e.runtimeType}] $e');
       if (mounted) {
         final message = e.toString().replaceFirst('Exception: ', '').trim();
         setState(() {
@@ -68,6 +77,46 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _continueWithGoogle() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await ref.read(authProvider.notifier).loginWithGoogle();
+      if (mounted) {
+        context.goNamed(RouteNames.faceUpload);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final message = e.toString().replaceFirst('Exception: ', '').trim();
+      setState(() {
+        _error = message.isEmpty ? 'Google sign-in failed. Please try again.' : message;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _continueWithFacebook() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await ref.read(authProvider.notifier).loginWithFacebook();
+      if (mounted) {
+        context.goNamed(RouteNames.faceUpload);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final message = e.toString().replaceFirst('Exception: ', '').trim();
+      setState(() {
+        _error = message.isEmpty ? 'Facebook sign-in failed. Please try again.' : message;
+        _loading = false;
+      });
     }
   }
 
@@ -176,7 +225,7 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                         _LabeledField(
                           label: 'EMAIL ADDRESS',
                           controller: _emailController,
-                          hint: 'you@example.com',
+                          hint: kSignInEmailHint,
                           icon: Icons.alternate_email_rounded,
                           keyboard: TextInputType.emailAddress,
                         ),
@@ -206,10 +255,36 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                         if (_loading)
                           const Center(child: CircularProgressIndicator(color: PresntTokens.primary))
                         else
-                          PresntGradientCta(
-                            label: 'Continue',
-                            trailing: const Icon(Icons.east_rounded, color: PresntTokens.onPrimaryFixed),
-                            onPressed: _continue,
+                          Column(
+                            children: [
+                              PresntGradientCta(
+                                label: 'Continue',
+                                trailing: const Icon(Icons.east_rounded, color: PresntTokens.onPrimaryFixed),
+                                onPressed: _continue,
+                              ),
+                              const SizedBox(height: 12),
+                              OutlinedButton.icon(
+                                onPressed: _continueWithGoogle,
+                                icon: const Icon(Icons.g_mobiledata_rounded),
+                                label: const Text('Continue with Google'),
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size.fromHeight(50),
+                                  foregroundColor: PresntTokens.onSurface,
+                                  side: BorderSide(color: PresntTokens.outlineVariant.withValues(alpha: 0.3)),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              OutlinedButton.icon(
+                                onPressed: _continueWithFacebook,
+                                icon: const Icon(Icons.facebook_rounded),
+                                label: const Text('Continue with Facebook'),
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size.fromHeight(50),
+                                  foregroundColor: PresntTokens.onSurface,
+                                  side: BorderSide(color: PresntTokens.outlineVariant.withValues(alpha: 0.3)),
+                                ),
+                              ),
+                            ],
                           ),
                         const SizedBox(height: 20),
                         Text.rich(

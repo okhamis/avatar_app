@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../config/content_strings.dart';
 import '../../providers/auth_provider.dart';
 import '../../routes/route_names.dart';
 import '../../theme/presnt_tokens.dart';
@@ -17,6 +19,7 @@ class SignInScreen extends ConsumerStatefulWidget {
 class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _linkPasswordController = TextEditingController();
   bool _loading = false;
   String? _error;
   bool _obscure = true;
@@ -25,6 +28,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _linkPasswordController.dispose();
     super.dispose();
   }
 
@@ -63,6 +67,129 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     }
   }
 
+  Future<void> _signInWithGoogle() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await ref.read(authProvider.notifier).loginWithGoogle();
+      if (!mounted) return;
+      context.goNamed(RouteNames.home);
+    } on AuthLinkRequiredException catch (e) {
+      if (!mounted) return;
+      await _showLinkAccountDialog(e);
+      if (!mounted) return;
+      setState(() => _loading = false);
+    } catch (e) {
+      if (!mounted) return;
+      final message = e.toString().replaceFirst('Exception: ', '').trim();
+      setState(() {
+        _error = message.isEmpty ? 'Google sign-in failed. Please try again.' : message;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _signInWithFacebook() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await ref.read(authProvider.notifier).loginWithFacebook();
+      if (!mounted) return;
+      context.goNamed(RouteNames.home);
+    } on AuthLinkRequiredException catch (e) {
+      if (!mounted) return;
+      await _showLinkAccountDialog(e);
+      if (!mounted) return;
+      setState(() => _loading = false);
+    } catch (e) {
+      if (!mounted) return;
+      final message = e.toString().replaceFirst('Exception: ', '').trim();
+      setState(() {
+        _error = message.isEmpty ? 'Facebook sign-in failed. Please try again.' : message;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _showLinkAccountDialog(AuthLinkRequiredException link) async {
+    _linkPasswordController.clear();
+    String dialogError = '';
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Link your account'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'An account already exists for ${link.email}. Sign in once with your password to link ${_providerLabel(link.pendingProviderId)}.',
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Existing sign-in methods: ${link.signInMethods.join(', ')}',
+                    style: GoogleFonts.manrope(fontSize: 12, color: PresntTokens.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _linkPasswordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Account password',
+                    ),
+                  ),
+                  if (dialogError.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(dialogError, style: const TextStyle(color: Colors.redAccent)),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    try {
+                      await ref.read(authProvider.notifier).resolvePendingLinkWithEmailPassword(
+                            email: link.email,
+                            password: _linkPasswordController.text,
+                          );
+                      if (!ctx.mounted) return;
+                      Navigator.of(ctx).pop();
+                      if (!mounted) return;
+                      context.goNamed(RouteNames.home);
+                    } catch (e) {
+                      setDialogState(() {
+                        dialogError = e.toString().replaceFirst('Exception: ', '').trim();
+                      });
+                    }
+                  },
+                  child: const Text('Sign in & link'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _providerLabel(String providerId) {
+    if (providerId == GoogleAuthProvider.PROVIDER_ID) return 'Google';
+    if (providerId == FacebookAuthProvider.PROVIDER_ID) return 'Facebook';
+    return providerId;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -96,7 +223,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   const SizedBox(height: 24),
                   _field(
                     controller: _emailController,
-                    hint: 'you@example.com',
+                    hint: kSignInEmailHint,
                     icon: Icons.alternate_email_rounded,
                   ),
                   const SizedBox(height: 12),
@@ -118,12 +245,44 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   if (_loading)
                     const Center(child: CircularProgressIndicator(color: PresntTokens.primary))
                   else
-                    PresntGradientCta(
-                      label: 'Sign In',
-                      trailing: const Icon(Icons.login_rounded, color: PresntTokens.onPrimaryFixed),
-                      onPressed: _signIn,
+                    Column(
+                      children: [
+                        PresntGradientCta(
+                          label: 'Sign In',
+                          trailing: const Icon(Icons.login_rounded, color: PresntTokens.onPrimaryFixed),
+                          onPressed: _signIn,
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: _signInWithGoogle,
+                          icon: const Icon(Icons.g_mobiledata_rounded),
+                          label: const Text('Continue with Google'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(50),
+                            foregroundColor: PresntTokens.onSurface,
+                            side: BorderSide(color: PresntTokens.outlineVariant.withValues(alpha: 0.3)),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        OutlinedButton.icon(
+                          onPressed: _signInWithFacebook,
+                          icon: const Icon(Icons.facebook_rounded),
+                          label: const Text('Continue with Facebook'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(50),
+                            foregroundColor: PresntTokens.onSurface,
+                            side: BorderSide(color: PresntTokens.outlineVariant.withValues(alpha: 0.3)),
+                          ),
+                        ),
+                      ],
                     ),
                   const SizedBox(height: 10),
+                  Text(
+                    'Use the same login method each time to keep your family profile linked.',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.manrope(fontSize: 12, color: PresntTokens.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 6),
                   TextButton(
                     onPressed: () => context.goNamed(RouteNames.createAccount),
                     child: const Text('Need an account? Create one'),

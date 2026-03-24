@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../routes/route_names.dart';
 import '../../theme/presnt_tokens.dart';
+import '../../config/behavioral_training_questions.dart';
 import '../../providers/avatar_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/presnt/presnt_glass_bar.dart';
@@ -16,13 +17,7 @@ class BehavioralTrainingScreen extends ConsumerStatefulWidget {
 }
 
 class _BehavioralTrainingScreenState extends ConsumerState<BehavioralTrainingScreen> {
-  final _questions = const [
-    'How would you describe your communication style?',
-    'What are your core values?',
-    'How do you typically respond when someone asks for a favor?',
-    'What are your priorities in life?',
-    'How do you make decisions?',
-  ];
+  List<String> get _questions => kBehavioralTrainingQuestions;
 
   late final List<TextEditingController> _controllers;
   bool _loading = false;
@@ -52,20 +47,25 @@ class _BehavioralTrainingScreenState extends ConsumerState<BehavioralTrainingScr
       final t = _controllers[i].text.trim();
       if (t.isNotEmpty) answers['q${i + 1}'] = t;
     }
-    try {
-      await ref.read(avatarProvider.notifier).trainBehaviorProfile(ownerId: user.uid, answers: answers);
-      await ref.read(authProvider.notifier).updateTrainingFlags(hasBehaviorTrained: true);
-      if (mounted) {
-        setState(() => _loading = false);
-        context.goNamed(RouteNames.avatarPreview);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _loading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Behavior training failed. Please try again.')),
-        );
-      }
+
+    // 1. Fire-and-forget: update flag (sets state synchronously, Firebase save
+    //    may hang so we must not await it).
+    ref.read(authProvider.notifier).updateTrainingFlags(hasBehaviorTrained: true).catchError((_) {});
+    debugPrint('[BEHAVIOR] hasBehaviorTrained=true set');
+
+    // 2. Fire-and-forget: train behavior profile.
+    ref.read(avatarProvider.notifier).trainBehaviorProfile(
+      ownerId: user.uid,
+      answers: answers,
+    ).then((_) {
+      debugPrint('[BEHAVIOR] Training saved');
+    }).catchError((Object e) {
+      debugPrint('[BEHAVIOR] Training save error (non-blocking): $e');
+    });
+
+    // 3. Navigate immediately.
+    if (mounted) {
+      context.goNamed(RouteNames.avatarPreview);
     }
   }
 
@@ -86,18 +86,10 @@ class _BehavioralTrainingScreenState extends ConsumerState<BehavioralTrainingScr
           ),
           PresntGlassTopBar(
             height: 68,
-            leading: CircleAvatar(
+            leading: const CircleAvatar(
               radius: 18,
               backgroundColor: PresntTokens.surfaceContainerHigh,
-              child: ClipOval(
-                child: Image.network(
-                  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop',
-                  width: 36,
-                  height: 36,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => const Icon(Icons.person_rounded, size: 20, color: PresntTokens.onSurfaceVariant),
-                ),
-              ),
+              child: Icon(Icons.person_rounded, size: 20, color: PresntTokens.onSurfaceVariant),
             ),
             title: Text(
               'PRESNT',

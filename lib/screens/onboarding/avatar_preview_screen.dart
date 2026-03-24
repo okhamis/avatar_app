@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,15 +13,11 @@ import '../../widgets/presnt/presnt_buttons.dart';
 class AvatarPreviewScreen extends ConsumerWidget {
   const AvatarPreviewScreen({super.key});
 
-  static const _previewUrl =
-      'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=800&h=800&fit=crop';
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final avatar = ref.watch(avatarProvider);
     final fidelityLabel = '${(((avatar?.fidelityScore ?? 0.984) * 100)).toStringAsFixed(1)}%';
     final livePreview = avatar?.previewImagePath;
-    final previewUrl = (livePreview != null && livePreview.startsWith('http')) ? livePreview : _previewUrl;
     return Scaffold(
       backgroundColor: PresntTokens.background,
       extendBodyBehindAppBar: true,
@@ -30,13 +27,7 @@ class AvatarPreviewScreen extends ConsumerWidget {
           radius: 18,
           backgroundColor: PresntTokens.surfaceContainerHigh,
           child: ClipOval(
-            child: Image.network(
-              previewUrl,
-              width: 36,
-              height: 36,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => const Icon(Icons.person_rounded, color: PresntTokens.onSurfaceVariant),
-            ),
+            child: _buildAvatar(livePreview, 36),
           ),
         ),
         title: Text(
@@ -98,7 +89,7 @@ class AvatarPreviewScreen extends ConsumerWidget {
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(flex: 58, child: _previewPane(context, previewUrl)),
+                      Expanded(flex: 58, child: _previewPane(context, livePreview)),
                       const SizedBox(width: 28),
                       Expanded(flex: 42, child: _sidePanel(context, fidelityLabel)),
                     ],
@@ -107,7 +98,7 @@ class AvatarPreviewScreen extends ConsumerWidget {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _previewPane(context, previewUrl),
+                    _previewPane(context, livePreview),
                     const SizedBox(height: 24),
                     _sidePanel(context, fidelityLabel),
                   ],
@@ -184,7 +175,54 @@ class AvatarPreviewScreen extends ConsumerWidget {
     );
   }
 
-  Widget _previewPane(BuildContext context, String previewUrl) {
+  Widget _buildAvatar(String? path, double size) {
+    if (path != null && path.isNotEmpty) {
+      if (path.startsWith('http')) {
+        return Image.network(path, width: size, height: size, fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => Icon(Icons.person_rounded, size: size * 0.6, color: PresntTokens.onSurfaceVariant));
+      }
+      final file = File(path);
+      return FutureBuilder<bool>(
+        future: file.exists(),
+        builder: (ctx, snap) {
+          if (snap.data == true) {
+            return Image.file(file, width: size, height: size, fit: BoxFit.cover);
+          }
+          return Icon(Icons.person_rounded, size: size * 0.6, color: PresntTokens.onSurfaceVariant);
+        },
+      );
+    }
+    return Icon(Icons.person_rounded, size: size * 0.6, color: PresntTokens.onSurfaceVariant);
+  }
+
+  Widget _buildPreviewImage(String? path) {
+    if (path != null && path.isNotEmpty) {
+      if (path.startsWith('http')) {
+        return Image.network(path, fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _placeholderPreview());
+      }
+      final file = File(path);
+      return FutureBuilder<bool>(
+        future: file.exists(),
+        builder: (ctx, snap) {
+          if (snap.data == true) return Image.file(file, fit: BoxFit.cover);
+          return _placeholderPreview();
+        },
+      );
+    }
+    return _placeholderPreview();
+  }
+
+  Widget _placeholderPreview() {
+    return Container(
+      color: PresntTokens.surfaceContainerLowest,
+      child: const Center(
+        child: Icon(Icons.person_rounded, size: 80, color: PresntTokens.primary),
+      ),
+    );
+  }
+
+  Widget _previewPane(BuildContext context, String? livePreview) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -195,14 +233,7 @@ class AvatarPreviewScreen extends ConsumerWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                Image.network(
-                  previewUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => Container(
-                    color: PresntTokens.surfaceContainerLowest,
-                    child: const Icon(Icons.person_rounded, size: 80, color: PresntTokens.primary),
-                  ),
-                ),
+                _buildPreviewImage(livePreview),
                 Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -257,15 +288,22 @@ class AvatarPreviewScreen extends ConsumerWidget {
                   ),
                 ),
                 Center(
-                  child: Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.black.withValues(alpha: 0.4),
-                      border: Border.all(color: PresntTokens.primary.withValues(alpha: 0.35)),
+                  child: GestureDetector(
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Live video preview will be available after you go live.')),
+                      );
+                    },
+                    child: Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.black.withValues(alpha: 0.4),
+                        border: Border.all(color: PresntTokens.primary.withValues(alpha: 0.35)),
+                      ),
+                      child: const Icon(Icons.play_arrow_rounded, size: 44, color: PresntTokens.primary),
                     ),
-                    child: const Icon(Icons.play_arrow_rounded, size: 44, color: PresntTokens.primary),
                   ),
                 ),
               ],

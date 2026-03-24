@@ -6,16 +6,15 @@ import '../../providers/auth_provider.dart';
 import '../../providers/avatar_provider.dart';
 import '../../routes/route_names.dart';
 import '../../theme/presnt_tokens.dart';
+import '../../widgets/avatar_preview_display.dart';
 import '../../widgets/presnt/presnt_buttons.dart';
 
 class GoLiveScreen extends ConsumerWidget {
   const GoLiveScreen({super.key});
 
-  static const _artUrl =
-      'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&h=600&fit=crop';
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final previewPath = ref.watch(avatarProvider)?.previewImagePath;
     return Scaffold(
       backgroundColor: PresntTokens.surface,
       body: Stack(
@@ -66,10 +65,10 @@ class GoLiveScreen extends ConsumerWidget {
                           ),
                           padding: const EdgeInsets.all(4),
                           child: ClipOval(
-                            child: Image.network(
-                              _artUrl,
+                            child: AvatarPreviewDisplay(
+                              imagePath: previewPath,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => Container(
+                              placeholder: Container(
                                 color: PresntTokens.surfaceContainerLowest,
                                 child: const Icon(Icons.hub_rounded, size: 72, color: PresntTokens.primary),
                               ),
@@ -113,19 +112,22 @@ class GoLiveScreen extends ConsumerWidget {
                   const Spacer(),
                   PresntGradientCta(
                     label: 'Enter Presnt',
-                    onPressed: () async {
+                    onPressed: () {
                       final user = ref.read(authProvider);
                       if (user == null) return;
-                      try {
-                        await ref.read(avatarProvider.notifier).setAvatarLive(ownerId: user.uid, isLive: true);
-                        await ref.read(authProvider.notifier).updateTrainingFlags(isLive: true);
-                        if (context.mounted) context.goNamed(RouteNames.home);
-                      } catch (_) {
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Could not activate avatar yet. Please retry.')),
-                        );
-                      }
+
+                      // Fire-and-forget: set avatar live (Firebase save may hang).
+                      ref.read(avatarProvider.notifier)
+                          .setAvatarLive(ownerId: user.uid, isLive: true)
+                          .catchError((_) {});
+
+                      // Fire-and-forget: update auth flag (state set synchronously).
+                      ref.read(authProvider.notifier)
+                          .updateTrainingFlags(isLive: true)
+                          .catchError((_) {});
+
+                      // Navigate immediately.
+                      context.goNamed(RouteNames.home);
                     },
                   ),
                   const SizedBox(height: 12),

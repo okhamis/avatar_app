@@ -22,17 +22,17 @@ class AvatarSetupScreen extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.face),
             title: const Text("Update Face Photos"),
-            onTap: () {},
+            onTap: () => context.goNamed(RouteNames.faceUpload),
           ),
           ListTile(
             leading: const Icon(Icons.mic),
             title: const Text("Re-record Voice"),
-            onTap: () {},
+            onTap: () => context.goNamed(RouteNames.voiceRecord),
           ),
           ListTile(
             leading: const Icon(Icons.psychology),
             title: const Text("Update Behavioral Training"),
-            onTap: () {},
+            onTap: () => context.goNamed(RouteNames.behavioralTraining),
           ),
           const Divider(),
           ListTile(

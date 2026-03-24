@@ -29,13 +29,7 @@ class ConversationListScreen extends StatefulWidget {
 class _ConversationListScreenState extends State<ConversationListScreen> {
   String _filter = 'All';
 
-  final List<_ConvItem> _all = const [
-    _ConvItem(id: 'sess_live', contact: 'Dr. Smith', subtitle: 'Live now • Healthcare', tag: 'Active', isLive: true),
-    _ConvItem(id: 'sess_1', contact: 'Jane Doe', subtitle: '2 hours ago • 4m 32s', tag: 'Resolved', isLive: false),
-    _ConvItem(id: 'sess_2', contact: 'Delivery Service', subtitle: 'Yesterday • 1m 10s', tag: 'Resolved', isLive: false),
-    _ConvItem(id: 'sess_3', contact: 'Bank Support', subtitle: '3 days ago • 6m 45s', tag: 'Pending Approval', isLive: false),
-    _ConvItem(id: 'sess_4', contact: 'Alex Doe', subtitle: 'Last week • 2m 08s', tag: 'Resolved', isLive: false),
-  ];
+  final List<_ConvItem> _all = const [];
 
   List<_ConvItem> get _filtered {
     switch (_filter) {
@@ -87,7 +81,14 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
       ),
       body: items.isEmpty
           ? const Center(
-              child: Text('No conversations.', style: TextStyle(color: AppColors.textSecondary)),
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'No conversations yet. Start a live session to create one, or connect a session store to list past calls.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.textSecondary, height: 1.4),
+                ),
+              ),
             )
           : ListView.separated(
               itemCount: items.length,

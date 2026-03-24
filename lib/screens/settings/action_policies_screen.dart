@@ -14,36 +14,6 @@ class ActionPoliciesScreen extends ConsumerStatefulWidget {
 }
 
 class _ActionPoliciesScreenState extends ConsumerState<ActionPoliciesScreen> {
-  @override
-  void initState() {
-    super.initState();
-    Future.microtask(_seedMockPolicies);
-  }
-
-  void _seedMockPolicies() {
-    final policies = ref.read(policiesProvider);
-    if (policies.isEmpty) {
-      final defaults = [
-        ('Scheduling Meetings', 1),
-        ('Sending Emails', 2),
-        ('Releasing Financial Docs', 3),
-        ('Sharing Location', 2),
-        ('Booking Appointments', 1),
-      ];
-      for (final (action, tier) in defaults) {
-        ref.read(policiesProvider.notifier).addPolicy(PolicyRecord(
-          recordId: 'pol_${action.hashCode}',
-          accountId: 'acc_1',
-          actionType: action,
-          defaultTier: tier,
-          permanentlyBlocked: false,
-          timeoutSeconds: 300,
-          overrideHistory: [],
-        ));
-      }
-    }
-  }
-
   Future<void> _changeTier(PolicyRecord policy, int newTier) async {
     // Lowering a tier requires biometric
     if (newTier < policy.effectiveTier) {
@@ -87,9 +57,15 @@ class _ActionPoliciesScreenState extends ConsumerState<ActionPoliciesScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          if (activePolicies.isEmpty)
-            const Center(child: CircularProgressIndicator())
-          else ...[
+          if (activePolicies.isEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                'No action policies yet. Add policies from settings or sync from your account when the backend is connected.',
+                style: TextStyle(color: AppColors.textSecondary, height: 1.4),
+              ),
+            ),
+          ] else ...[
             const Text('Configurable Policies', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             ...activePolicies.map((policy) => Padding(

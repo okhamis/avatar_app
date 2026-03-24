@@ -8,8 +8,23 @@ final firebaseServiceProvider = Provider((ref) => FirebaseService());
 
 final authProvider = NotifierProvider<AuthNotifier, UserModel?>(AuthNotifier.new);
 
+class AuthLinkRequiredException implements Exception {
+  AuthLinkRequiredException({
+    required this.email,
+    required this.signInMethods,
+    required this.pendingProviderId,
+  });
+
+  final String email;
+  final List<String> signInMethods;
+  final String pendingProviderId;
+}
+
 class AuthNotifier extends Notifier<UserModel?> {
   FirebaseService get _firebaseService => ref.read(firebaseServiceProvider);
+  AuthCredential? _pendingOAuthCredential;
+  String? _pendingProviderId;
+  String? _pendingEmail;
 
   @override
   UserModel? build() {
@@ -86,25 +101,133 @@ class AuthNotifier extends Notifier<UserModel?> {
     throw Exception('Login failed. Please try again.');
   }
 
-  Future<void> createAccount(String fullName, String email, String password) async {
+  Future<void> loginWithGoogle() async {
     try {
+      final credential = await _firebaseService.signInWithGoogle();
+      await _syncAuthenticatedUser(credential, fallbackEmail: credential.user?.email ?? '');
+    } on FirebaseAuthException catch (e) {
+      debugPrint('Google login FirebaseAuthException [${e.code}]: ${e.message}');
+      if (e.code == 'account-exists-with-different-credential' && e.credential != null && (e.email?.isNotEmpty ?? false)) {
+        _pendingOAuthCredential = e.credential;
+        _pendingProviderId = GoogleAuthProvider.PROVIDER_ID;
+        _pendingEmail = e.email;
+        throw AuthLinkRequiredException(
+          email: e.email!,
+          signInMethods: const ['password'],
+          pendingProviderId: GoogleAuthProvider.PROVIDER_ID,
+        );
+      }
+      if (kDebugMode && e.code == 'no-app') {
+        state = UserModel(uid: 'mock_google_uid', email: 'google.debug@example.com', fullName: 'Google Demo User');
+        return;
+      }
+      throw Exception(_friendlyAuthMessage(e));
+    } on FirebaseException catch (e) {
+      debugPrint('Google login FirebaseException [${e.code}]: ${e.message}');
+      if (kDebugMode && e.code == 'no-app') {
+        state = UserModel(uid: 'mock_google_uid', email: 'google.debug@example.com', fullName: 'Google Demo User');
+        return;
+      }
+      throw Exception(_friendlyFirebaseMessage(e));
+    } catch (e) {
+      debugPrint('Google login unexpected error [${e.runtimeType}]: $e');
+      throw Exception('Google sign-in failed. Please try again.');
+    }
+  }
+
+  Future<void> loginWithFacebook() async {
+    try {
+      final credential = await _firebaseService.signInWithFacebook();
+      await _syncAuthenticatedUser(credential, fallbackEmail: credential.user?.email ?? '');
+    } on FirebaseAuthException catch (e) {
+      debugPrint('Facebook login FirebaseAuthException [${e.code}]: ${e.message}');
+      if (e.code == 'account-exists-with-different-credential' && e.credential != null && (e.email?.isNotEmpty ?? false)) {
+        _pendingOAuthCredential = e.credential;
+        _pendingProviderId = FacebookAuthProvider.PROVIDER_ID;
+        _pendingEmail = e.email;
+        throw AuthLinkRequiredException(
+          email: e.email!,
+          signInMethods: const ['password'],
+          pendingProviderId: FacebookAuthProvider.PROVIDER_ID,
+        );
+      }
+      if (kDebugMode && e.code == 'no-app') {
+        state = UserModel(uid: 'mock_facebook_uid', email: 'facebook.debug@example.com', fullName: 'Facebook Demo User');
+        return;
+      }
+      throw Exception(_friendlyAuthMessage(e));
+    } on FirebaseException catch (e) {
+      debugPrint('Facebook login FirebaseException [${e.code}]: ${e.message}');
+      if (kDebugMode && e.code == 'no-app') {
+        state = UserModel(uid: 'mock_facebook_uid', email: 'facebook.debug@example.com', fullName: 'Facebook Demo User');
+        return;
+      }
+      throw Exception(_friendlyFirebaseMessage(e));
+    } catch (e) {
+      debugPrint('Facebook login unexpected error [${e.runtimeType}]: $e');
+      throw Exception('Facebook sign-in failed. Please try again.');
+    }
+  }
+
+  Future<void> resolvePendingLinkWithEmailPassword({
+    required String email,
+    required String password,
+  }) async {
+    final pending = _pendingOAuthCredential;
+    if (pending == null || _pendingEmail == null || _pendingProviderId == null) {
+      throw Exception('No pending provider link request.');
+    }
+    if (_pendingEmail != email) {
+      throw Exception('Please use the same email requested for linking.');
+    }
+
+    final emailCredential = await _firebaseService.signInWithEmail(email, password);
+    try {
+      final linkedCredential = await _firebaseService.linkCurrentUserWithCredential(pending);
+      await _syncAuthenticatedUser(
+        linkedCredential,
+        fallbackEmail: linkedCredential.user?.email ?? emailCredential.user?.email ?? email,
+      );
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'provider-already-linked' || e.code == 'credential-already-in-use') {
+        final signedIn = await _firebaseService.signInWithCredential(pending);
+        await _syncAuthenticatedUser(signedIn, fallbackEmail: signedIn.user?.email ?? email);
+      } else {
+        rethrow;
+      }
+    } finally {
+      _pendingOAuthCredential = null;
+      _pendingProviderId = null;
+      _pendingEmail = null;
+    }
+  }
+
+  Future<void> createAccount(String fullName, String email, String password) async {
+    debugPrint('[AUTH] createAccount called: email=$email, kDebugMode=$kDebugMode');
+    try {
+      debugPrint('[AUTH] Calling _firebaseService.createUserWithEmail...');
       final credential = await _firebaseService.createUserWithEmail(email, password);
+      debugPrint('[AUTH] createUserWithEmail returned, uid=${credential.user?.uid}');
       final uid = credential.user?.uid;
 
       if (uid == null) {
+        debugPrint('[AUTH] uid is null, throwing');
         throw Exception('Unable to create account. Please try again.');
       }
 
       final user = UserModel(uid: uid, email: email, fullName: fullName);
       try {
         await _firebaseService.saveUserProfile(user);
+        debugPrint('[AUTH] saveUserProfile succeeded');
       } catch (firestoreErr) {
-        debugPrint('Firestore save failed (continuing with local state): $firestoreErr');
+        debugPrint('[AUTH] Firestore save failed (continuing): $firestoreErr');
       }
       state = user;
+      debugPrint('[AUTH] createAccount SUCCESS, state set');
     } on FirebaseAuthException catch (e) {
-      debugPrint('createAccount FirebaseAuthException [${e.code}]: ${e.message}');
+      debugPrint('[AUTH] FirebaseAuthException [${e.code}]: ${e.message}');
       if (kDebugMode) {
+        debugPrint('[AUTH] Debug mode: creating mock user and returning');
         state = UserModel(
           uid: 'mock_${DateTime.now().millisecondsSinceEpoch}',
           email: email,
@@ -114,8 +237,9 @@ class AuthNotifier extends Notifier<UserModel?> {
       }
       throw Exception(_friendlyAuthMessage(e));
     } on FirebaseException catch (e) {
-      debugPrint('createAccount FirebaseException [${e.code}]: ${e.message}');
+      debugPrint('[AUTH] FirebaseException [${e.code}]: ${e.message}');
       if (kDebugMode) {
+        debugPrint('[AUTH] Debug mode: creating mock user and returning');
         state = UserModel(
           uid: 'mock_${DateTime.now().millisecondsSinceEpoch}',
           email: email,
@@ -125,8 +249,9 @@ class AuthNotifier extends Notifier<UserModel?> {
       }
       throw Exception(_friendlyFirebaseMessage(e));
     } catch (e) {
-      debugPrint('createAccount unexpected error [${e.runtimeType}]: $e');
+      debugPrint('[AUTH] Unexpected error [${e.runtimeType}]: $e');
       if (kDebugMode) {
+        debugPrint('[AUTH] Debug mode: creating mock user and returning');
         state = UserModel(
           uid: 'mock_${DateTime.now().millisecondsSinceEpoch}',
           email: email,
@@ -169,6 +294,31 @@ class AuthNotifier extends Notifier<UserModel?> {
     }
   }
 
+  Future<void> _syncAuthenticatedUser(
+    UserCredential credential, {
+    required String fallbackEmail,
+  }) async {
+    final uid = credential.user?.uid;
+    if (uid == null) {
+      throw Exception('Login failed. Please try again.');
+    }
+    try {
+      final existing = await _firebaseService.getUserProfile(uid);
+      state = existing;
+      return;
+    } on FirebaseException catch (e) {
+      if (e.code != 'not-found') rethrow;
+    }
+
+    final user = UserModel(
+      uid: uid,
+      email: credential.user?.email ?? fallbackEmail,
+      fullName: credential.user?.displayName ?? 'User',
+    );
+    await _firebaseService.saveUserProfile(user);
+    state = user;
+  }
+
   String _friendlyAuthMessage(FirebaseAuthException e) {
     switch (e.code) {
       case 'email-already-in-use':
@@ -181,6 +331,12 @@ class AuthNotifier extends Notifier<UserModel?> {
         return 'Email/password sign-up is not enabled in Firebase.';
       case 'network-request-failed':
         return 'Network error. Please check your internet connection.';
+      case 'account-exists-with-different-credential':
+        return 'This email is already used with another sign-in method. Sign in with that method first.';
+      case 'popup-closed-by-user':
+      case 'canceled':
+      case 'web-context-cancelled':
+        return 'Sign-in was cancelled.';
       case 'internal-error':
         return 'Authentication backend rejected the request. Verify Firebase Authentication is enabled for Email/Password and try again.';
       default:

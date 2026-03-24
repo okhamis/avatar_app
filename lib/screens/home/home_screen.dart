@@ -9,12 +9,10 @@ import '../../providers/auth_provider.dart';
 import '../../providers/avatar_provider.dart';
 import '../../providers/approval_provider.dart';
 import '../../models/avatar_model.dart';
+import '../../widgets/avatar_preview_display.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
-
-  static const _bgUrl =
-      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=1200&h=1600&fit=crop';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -25,6 +23,7 @@ class HomeScreen extends ConsumerWidget {
     final name = user?.fullName ?? 'Your Avatar';
     final status = (avatar?.status ?? AvatarStatus.draft).name;
     final fidelityPct = ((avatar?.fidelityScore ?? 0.0) * 100).round();
+    final previewPath = avatar?.previewImagePath;
 
     return Scaffold(
       backgroundColor: PresntTokens.background,
@@ -32,12 +31,18 @@ class HomeScreen extends ConsumerWidget {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Background portrait
-          Image.network(
-            _bgUrl,
-            fit: BoxFit.cover,
-            alignment: Alignment.topCenter,
-            errorBuilder: (_, _, _) => Container(color: PresntTokens.surfaceContainerLowest),
+          Positioned.fill(
+            child: AvatarPreviewDisplay(
+              imagePath: previewPath,
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+              placeholder: Container(
+                color: PresntTokens.surfaceContainerLowest,
+                child: const Center(
+                  child: Icon(Icons.person_rounded, size: 120, color: PresntTokens.primary),
+                ),
+              ),
+            ),
           ),
           // Vignette + gradient
           DecoratedBox(
@@ -174,7 +179,7 @@ class HomeScreen extends ConsumerWidget {
                     const SizedBox(height: 28),
                     Row(
                       children: [
-                        Expanded(child: _miniStat('CONVERSATIONS', '12', PresntTokens.primary)),
+                        Expanded(child: _miniStat('CONVERSATIONS', '0', PresntTokens.primary)),
                         Container(width: 1, height: 44, color: Colors.white.withValues(alpha: 0.12)),
                         Expanded(child: _miniStat('APPROVALS', '$pendingApprovals', PresntTokens.secondary)),
                         Container(width: 1, height: 44, color: Colors.white.withValues(alpha: 0.12)),

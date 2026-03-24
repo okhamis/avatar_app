@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -7,6 +8,7 @@ import 'dart:async';
 import '../../providers/avatar_provider.dart';
 import '../../providers/approval_provider.dart';
 import '../../theme/presnt_tokens.dart';
+import '../../widgets/avatar_preview_display.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class LiveConversationScreen extends ConsumerStatefulWidget {
@@ -29,9 +31,6 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
   Duration _elapsed = Duration.zero;
   Timer? _durationTimer;
   bool _showApprovalBanner = false;
-
-  static const _bgUrl =
-      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=1200&h=1600&fit=crop';
 
   @override
   void initState() {
@@ -77,7 +76,7 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
         lower.contains('bank') ||
         lower.contains('address') ||
         lower.contains('credit card');
-    if (needsApproval) {
+    if (needsApproval && kDebugMode) {
       setState(() => _showApprovalBanner = true);
       await ref.read(pendingApprovalsProvider.notifier).mockIncomingRequest('acc_demo', 'sess_live', '****-****-9022');
     }
@@ -116,16 +115,19 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
 
   @override
   Widget build(BuildContext context) {
+    final previewPath = ref.watch(avatarProvider)?.previewImagePath;
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Image.network(
-            _bgUrl,
-            fit: BoxFit.cover,
-            alignment: Alignment.center,
-            errorBuilder: (_, _, _) => Container(color: Colors.black),
+          Positioned.fill(
+            child: AvatarPreviewDisplay(
+              imagePath: previewPath,
+              fit: BoxFit.cover,
+              alignment: Alignment.center,
+              placeholder: Container(color: Colors.black),
+            ),
           ),
           DecoratedBox(
             decoration: BoxDecoration(

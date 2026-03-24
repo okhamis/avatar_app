@@ -25,13 +25,7 @@ class ApprovalHistoryScreen extends StatefulWidget {
 class _ApprovalHistoryScreenState extends State<ApprovalHistoryScreen> {
   String _filter = 'All';
 
-  final List<_HistoryItem> _history = [
-    _HistoryItem(requester: 'Dr. Smith Clinic', credentialType: 'Insurance ID', outcome: 'approved', timestamp: DateTime.now().subtract(const Duration(hours: 2))),
-    _HistoryItem(requester: 'Jane Doe', credentialType: 'Home Address', outcome: 'approved', timestamp: DateTime.now().subtract(const Duration(hours: 5))),
-    _HistoryItem(requester: 'Unknown Caller', credentialType: 'SSN', outcome: 'denied', timestamp: DateTime.now().subtract(const Duration(days: 1))),
-    _HistoryItem(requester: 'Bank Bot', credentialType: 'Account Number', outcome: 'expired', timestamp: DateTime.now().subtract(const Duration(days: 2))),
-    _HistoryItem(requester: 'Delivery Service', credentialType: 'Home Address', outcome: 'approved', timestamp: DateTime.now().subtract(const Duration(days: 3))),
-  ];
+  final List<_HistoryItem> _history = [];
 
   List<_HistoryItem> get _filtered {
     if (_filter == 'All') return _history;
@@ -69,7 +63,16 @@ class _ApprovalHistoryScreenState extends State<ApprovalHistoryScreen> {
           const SizedBox(height: 8),
           Expanded(
             child: items.isEmpty
-                ? const Center(child: Text('No records.', style: TextStyle(color: AppColors.textSecondary)))
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        'No approval history yet. Completed approvals will appear here once the backend is connected.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppColors.textSecondary, height: 1.4),
+                      ),
+                    ),
+                  )
                 : ListView.separated(
                     itemCount: items.length,
                     separatorBuilder: (_, _) => const Divider(height: 1),

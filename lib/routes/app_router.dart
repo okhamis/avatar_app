@@ -36,7 +36,9 @@ import '../models/avatar_model.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final user = ref.watch(authProvider);
-  final avatar = user == null ? null : ref.watch(avatarProvider);
+  // Only watch authProvider for redirect logic. Avatar status is checked via
+  // ref.read when needed (live-conversation gate) to avoid recreating the
+  // GoRouter on every avatar state change during onboarding.
 
   return GoRouter(
     initialLocation: '/welcome',
@@ -71,8 +73,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (onboardingPaths.contains(path)) {
         return '/home';
       }
-      if (path == '/conversations/live' && avatar?.status != AvatarStatus.live) {
-        return '/go-live';
+      if (path == '/conversations/live') {
+        final avatar = ref.read(avatarProvider);
+        if (avatar?.status != AvatarStatus.live) {
+          return '/go-live';
+        }
       }
       return null;
     },

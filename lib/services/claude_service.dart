@@ -2,11 +2,11 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import '../config/app_config.dart';
+import '../config/llm_prompts.dart';
 import 'behavioral_llm.dart';
 
 class ClaudeService implements BehavioralLlm {
-  static const String _endpoint = 'https://api.anthropic.com/v1/messages';
-
   @override
   Future<String> generateBehavioralResponse(String prompt) async {
     final apiKey = dotenv.env['CLAUDE_API_KEY'];
@@ -17,20 +17,19 @@ class ClaudeService implements BehavioralLlm {
 
     try {
       final model = dotenv.env['CLAUDE_MODEL']?.trim();
-      final modelId = (model == null || model.isEmpty) ? 'claude-sonnet-4-20250514' : model;
+      final modelId = (model == null || model.isEmpty) ? AppConfig.claudeDefaultModel : model;
 
       final response = await http.post(
-        Uri.parse(_endpoint),
+        Uri.parse(AppConfig.anthropicMessagesUrl),
         headers: {
           'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
+          'anthropic-version': AppConfig.anthropicVersion,
           'content-type': 'application/json',
         },
         body: jsonEncode({
           'model': modelId,
-          'max_tokens': 300,
-          'system':
-              'You are a digital twin assistant for the user. Maintain safe boundaries, never reveal raw credentials, and ask for approval for sensitive actions.',
+          'max_tokens': AppConfig.claudeMaxTokens,
+          'system': kClaudeDigitalTwinSystemPrompt,
           'messages': [
             {
               'role': 'user',

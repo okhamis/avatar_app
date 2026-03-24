@@ -1,9 +1,16 @@
 import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../../providers/auth_provider.dart';
+import '../../config/content_strings.dart';
 import '../../providers/avatar_provider.dart';
 import '../../routes/route_names.dart';
 import '../../theme/presnt_tokens.dart';
@@ -19,16 +26,27 @@ class VoiceRecordScreen extends ConsumerStatefulWidget {
 
 class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with TickerProviderStateMixin {
   bool _isRecording = false;
-  double _progress = 0.0;
-  Timer? _timer;
-  late final List<AnimationController> _waveCtrls;
+  bool _isPlayingPreview = false;
+  bool _isSubmitting = false;
+  Timer? _playbackTimer;
+  String? _recordedFilePath;
+  final AudioRecorder _recorder = AudioRecorder();
+  final AudioPlayer _player = AudioPlayer();
+  StreamSubscription<List<int>>? _streamSub;
+  final List<List<int>> _pcmChunks = [];
 
-  static const _sample =
-      '"My digital presence is an extension of my identity. This voice represents my thoughts, my values, and my unique perspective in the digital world. I am Presnt."';
+  static const int _wavSampleRate = 44100;
+  static const int _wavChannels = 1;
+  static const int _wavBitsPerSample = 16;
+  late final List<AnimationController> _waveCtrls;
 
   @override
   void initState() {
     super.initState();
+    _player.onPlayerComplete.listen((_) {
+      if (!mounted) return;
+      setState(() => _isPlayingPreview = false);
+    });
     _waveCtrls = List.generate(
       11,
       (i) => AnimationController(
@@ -40,52 +58,277 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _playbackTimer?.cancel();
+    _streamSub?.cancel();
+    _recorder.dispose();
+    _player.dispose();
     for (final c in _waveCtrls) {
       c.dispose();
     }
     super.dispose();
   }
 
-  void _toggleRecording() {
-    if (_isRecording) {
-      _stopRecording();
-    } else {
-      _startRecording();
+  bool _busy = false;
+
+  Future<void> _toggleRecording() async {
+    if (_busy) return;
+    _busy = true;
+    try {
+      if (_isRecording) {
+        await _stopRecording();
+      } else {
+        await _startRecording();
+      }
+    } finally {
+      _busy = false;
     }
   }
 
-  void _startRecording() {
-    setState(() {
-      _isRecording = true;
-      _progress = 0.0;
-    });
-    _timer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+  Future<void> _startRecording() async {
+    try {
+      final hasPermission = await _recorder.hasPermission();
+      debugPrint('[VOICE] hasPermission=$hasPermission');
+      if (!hasPermission) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Microphone permission is required to record.')),
+        );
+        return;
+      }
+
+      await _player.stop();
+      _playbackTimer?.cancel();
+      _pcmChunks.clear();
+
+      debugPrint('[VOICE] Starting stream recording...');
+      final stream = await _recorder.startStream(
+        const RecordConfig(
+          encoder: AudioEncoder.pcm16bits,
+          sampleRate: _wavSampleRate,
+          numChannels: _wavChannels,
+        ),
+      );
+
+      _streamSub = stream.listen((data) {
+        _pcmChunks.add(data);
+      });
+
+      debugPrint('[VOICE] Stream recording started');
       if (!mounted) return;
       setState(() {
-        _progress += 0.012;
-        if (_progress >= 1.0) {
-          _progress = 1.0;
-          _stopRecording();
-        }
+        _isRecording = true;
+        _isPlayingPreview = false;
+        _recordedFilePath = null;
       });
-    });
+    } catch (e) {
+      debugPrint('[VOICE] Start recording error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not start recording: $e')),
+      );
+    }
   }
 
-  void _stopRecording() {
-    _timer?.cancel();
-    setState(() => _isRecording = false);
+  Future<void> _stopRecording() async {
+    debugPrint('[VOICE] Stopping — chunks=${_pcmChunks.length}');
+
+    // 1. Detach stream (fire-and-forget, native cancel is broken).
+    _streamSub?.cancel();
+    _streamSub = null;
+
+    // 2. Fire-and-forget native stop.
+    _recorder.stop().timeout(const Duration(seconds: 1), onTimeout: () => null).catchError((_) => null);
+
+    // 3. Build WAV from collected PCM chunks and write in one shot.
+    int totalPcmBytes = 0;
+    for (final chunk in _pcmChunks) {
+      totalPcmBytes += chunk.length;
+    }
+    debugPrint('[VOICE] PCM bytes collected: $totalPcmBytes');
+
+    String? path;
+    if (totalPcmBytes > 0) {
+      // Use Application Support + explicit subfolder (Documents/Caches layout varies by platform;
+      // missing parents caused PathNotFoundException on some macOS sandbox builds).
+      final Directory supportDir = await getApplicationSupportDirectory();
+      final Directory voiceDir = Directory(
+        '${supportDir.path}/voice_recordings',
+      );
+      await voiceDir.create(recursive: true);
+      path =
+          '${voiceDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.wav';
+      final Uint8List wavBytes = _buildWavFile(totalPcmBytes);
+      final File outFile = File(path);
+      try {
+        await outFile.parent.create(recursive: true);
+        await outFile.writeAsBytes(wavBytes, flush: true);
+        debugPrint(
+          '[VOICE] WAV written: $path (${wavBytes.length} bytes)',
+        );
+      } catch (e, st) {
+        debugPrint('[VOICE] WAV write failed: $e\n$st');
+        path = null;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not save recording: $e')),
+          );
+        }
+      }
+    }
+
+    _pcmChunks.clear();
+    if (!mounted) return;
+    setState(() {
+      _isRecording = false;
+      if (path != null) {
+        _recordedFilePath = path;
+      }
+    });
+    debugPrint('[VOICE] Stop complete, hasFile=${path != null}');
+  }
+
+  /// Assembles a complete WAV file (header + PCM data) from collected chunks.
+  Uint8List _buildWavFile(int totalPcmBytes) {
+    final byteRate = _wavSampleRate * _wavChannels * _wavBitsPerSample ~/ 8;
+    final blockAlign = _wavChannels * _wavBitsPerSample ~/ 8;
+    final out = ByteData(44 + totalPcmBytes);
+
+    void ascii(int offset, String s) {
+      for (var i = 0; i < s.length; i++) {
+        out.setUint8(offset + i, s.codeUnitAt(i));
+      }
+    }
+
+    // WAV header (44 bytes)
+    ascii(0, 'RIFF');
+    out.setUint32(4, totalPcmBytes + 36, Endian.little);
+    ascii(8, 'WAVE');
+    ascii(12, 'fmt ');
+    out.setUint32(16, 16, Endian.little);
+    out.setUint16(20, 1, Endian.little);
+    out.setUint16(22, _wavChannels, Endian.little);
+    out.setUint32(24, _wavSampleRate, Endian.little);
+    out.setUint32(28, byteRate, Endian.little);
+    out.setUint16(32, blockAlign, Endian.little);
+    out.setUint16(34, _wavBitsPerSample, Endian.little);
+    ascii(36, 'data');
+    out.setUint32(40, totalPcmBytes, Endian.little);
+
+    // PCM data
+    var offset = 44;
+    for (final chunk in _pcmChunks) {
+      for (final byte in chunk) {
+        out.setUint8(offset++, byte);
+      }
+    }
+
+    return out.buffer.asUint8List();
+  }
+
+  Future<void> _playbackPreview() async {
+    if (_isRecording) {
+      await _stopRecording();
+    }
+    if (!mounted) return;
+    final filePath = _recordedFilePath;
+    if (filePath == null || filePath.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Record your voice first, then play it back.')),
+      );
+      return;
+    }
+
+    final file = File(filePath);
+    final exists = await file.exists();
+    final bytes = exists ? await file.length() : 0;
+    debugPrint('[VOICE] Playback: path=$filePath exists=$exists bytes=$bytes');
+    if (!exists || bytes < 100) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Recording file is empty. Please re-record.')),
+      );
+      return;
+    }
+
+    try {
+      await _player.stop();
+      _playbackTimer?.cancel();
+      await _player.setVolume(1.0);
+      setState(() => _isPlayingPreview = true);
+      debugPrint('[VOICE] Playing DeviceFileSource...');
+      await _player.play(DeviceFileSource(filePath));
+    } catch (e) {
+      debugPrint('[VOICE] Playback error: $e');
+      if (!mounted) return;
+      setState(() => _isPlayingPreview = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Playback failed: $e')),
+      );
+    }
+  }
+
+  Future<void> _handleContinue() async {
+    final user = ref.read(authProvider);
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in again before continuing.')),
+      );
+      return;
+    }
+
+    if (_isRecording) await _stopRecording();
+
+    setState(() => _isSubmitting = true);
+    final notifier = ref.read(avatarProvider.notifier);
+    final authNotifier = ref.read(authProvider.notifier);
+
+    try {
+      // 1. Update training flag — triggers GoRouter redirect to /behavioral-training.
+      await authNotifier.updateTrainingFlags(hasVoiceCloned: true);
+      debugPrint('[VOICE_RECORD] hasVoiceCloned=true set');
+
+      // 2. Save voice draft fire-and-forget (avatar state change must not block navigation).
+      notifier.saveVoiceDraft(
+        ownerId: user.uid,
+        samplePath: _recordedFilePath ?? 'sample_${DateTime.now().millisecondsSinceEpoch}.m4a',
+      ).then((_) {
+        debugPrint('[VOICE_RECORD] Voice draft saved');
+      }).catchError((Object e) {
+        debugPrint('[VOICE_RECORD] Voice draft save error (non-blocking): $e');
+      });
+
+      // 3. Navigate explicitly in case redirect hasn't fired yet.
+      if (!mounted) return;
+      context.goNamed(RouteNames.behavioralTraining);
+    } catch (e) {
+      debugPrint('[VOICE_RECORD] Voice setup error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Voice setup failed. Please retry.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final complete = _progress >= 1.0;
+    final complete = _recordedFilePath != null && _recordedFilePath!.isNotEmpty;
+    final hasVoiceSample = complete;
+    final audioActive = _isRecording || _isPlayingPreview;
     return Scaffold(
       backgroundColor: PresntTokens.surface,
       extendBodyBehindAppBar: true,
       appBar: PresntGlassTopBar(
         leading: IconButton(
-          onPressed: () => context.pop(),
+          onPressed: () async {
+            await _recorder.stop();
+            await _player.stop();
+            // Undo the face-trained flag so the redirect returns to /face-upload.
+            await ref.read(authProvider.notifier).updateTrainingFlags(hasFaceTrained: false);
+          },
           icon: const Icon(Icons.keyboard_backspace_rounded, color: PresntTokens.primary),
         ),
         title: Text(
@@ -177,7 +420,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
                         border: Border.all(color: PresntTokens.outlineVariant.withValues(alpha: 0.12)),
                       ),
                       child: Text(
-                        _sample,
+                        kVoiceRecordingSampleScript,
                         style: GoogleFonts.manrope(
                           fontSize: 20,
                           height: 1.5,
@@ -204,7 +447,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
                               final col = i % 3 == 1 ? PresntTokens.secondary : PresntTokens.primary;
                               return Container(
                                 width: 4,
-                                height: _isRecording ? h : 8 + (i % 4) * 2.0,
+                                height: audioActive ? h : 8 + (i % 4) * 2.0,
                                 decoration: BoxDecoration(
                                   color: col.withValues(alpha: 0.75),
                                   borderRadius: BorderRadius.circular(99),
@@ -220,7 +463,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
                   Center(
                     child: _MicPulseButton(
                       isRecording: _isRecording,
-                      onTap: _toggleRecording,
+                      onTap: () => _toggleRecording(),
                     ),
                   ),
                   const SizedBox(height: 28),
@@ -228,7 +471,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
                     children: [
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: () {},
+                          onPressed: hasVoiceSample ? _playbackPreview : null,
                           style: OutlinedButton.styleFrom(
                             foregroundColor: PresntTokens.onSurfaceVariant,
                             side: BorderSide(color: PresntTokens.outlineVariant.withValues(alpha: 0.25)),
@@ -248,7 +491,14 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
                       const SizedBox(width: 12),
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: () => setState(() => _progress = 0),
+                          onPressed: () {
+                            _playbackTimer?.cancel();
+                            setState(() {
+                              _isRecording = false;
+                              _isPlayingPreview = false;
+                              _recordedFilePath = null;
+                            });
+                          },
                           style: OutlinedButton.styleFrom(
                             foregroundColor: PresntTokens.onSurfaceVariant,
                             side: BorderSide(color: PresntTokens.outlineVariant.withValues(alpha: 0.25)),
@@ -275,27 +525,18 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
             child: PresntGradientCta(
               label: 'Continue to Analysis',
-              onPressed: complete
-                  ? () async {
-                      final user = ref.read(authProvider);
-                      if (user == null) return;
-                      try {
-                        await ref.read(avatarProvider.notifier).saveVoiceDraft(
-                          ownerId: user.uid,
-                          samplePath: 'sample_${DateTime.now().millisecondsSinceEpoch}.m4a',
-                        );
-                        await ref.read(authProvider.notifier).updateTrainingFlags(hasVoiceCloned: true);
-                        if (!context.mounted) return;
-                        context.goNamed(RouteNames.behavioralTraining);
-                      } catch (_) {
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Voice setup failed. Please retry.')),
-                        );
-                      }
-                    }
+              onPressed: (!_isSubmitting && complete) ? _handleContinue : null,
+              trailing: _isSubmitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(PresntTokens.onPrimaryFixed),
+                      ),
+                    )
                   : null,
-              padding: const EdgeInsets.symmetric(vertical: 18),
+              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
             ),
           ),
         ],
@@ -350,7 +591,11 @@ class _MicPulseButtonState extends State<_MicPulseButton> with SingleTickerProvi
               ),
             ],
           ),
-          child: const Icon(Icons.mic_rounded, size: 44, color: PresntTokens.onPrimaryFixed),
+          child: Icon(
+            widget.isRecording ? Icons.stop_rounded : Icons.mic_rounded,
+            size: 44,
+            color: PresntTokens.onPrimaryFixed,
+          ),
         ),
       ),
     );

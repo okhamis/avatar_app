@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:ai_digital_twin/models/avatar_model.dart';
 import 'package:ai_digital_twin/providers/avatar_provider.dart';
 import 'package:ai_digital_twin/services/behavioral_llm.dart';
@@ -44,6 +46,13 @@ class _FakeFirebaseService extends FirebaseService {
     bool? hasBehaviorTrained,
     bool? isLive,
   }) async {}
+
+  @override
+  Future<String?> uploadAvatarPreviewImage({
+    required String ownerId,
+    required File file,
+  }) async =>
+      null;
 }
 
 void main() {

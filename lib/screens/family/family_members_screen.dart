@@ -8,6 +8,7 @@ import '../../theme/presnt_tokens.dart';
 import '../../widgets/family_member_tile.dart';
 import '../../models/family_member_model.dart';
 import '../../providers/family_provider.dart';
+import '../../providers/auth_provider.dart';
 
 class FamilyMembersScreen extends ConsumerStatefulWidget {
   const FamilyMembersScreen({super.key});
@@ -17,42 +18,6 @@ class FamilyMembersScreen extends ConsumerStatefulWidget {
 }
 
 class _FamilyMembersScreenState extends ConsumerState<FamilyMembersScreen> {
-  @override
-  void initState() {
-    super.initState();
-    Future.microtask(_seedMockData);
-  }
-
-  void _seedMockData() {
-    final members = ref.read(familyMembersProvider);
-    if (members.isEmpty) {
-      ref.read(familyMembersProvider.notifier).addMember(FamilyMember(
-            memberId: 'm_1',
-            accountId: 'acc_1',
-            name: 'Sarah Jenkins',
-            relationship: 'Spouse • Primary Contact',
-            accessTier: 1,
-            addedAt: DateTime.now(),
-          ));
-      ref.read(familyMembersProvider.notifier).addMember(FamilyMember(
-            memberId: 'm_2',
-            accountId: 'acc_1',
-            name: 'Marcus Jenkins',
-            relationship: 'Son • Student',
-            accessTier: 2,
-            addedAt: DateTime.now(),
-          ));
-      ref.read(familyMembersProvider.notifier).addMember(FamilyMember(
-            memberId: 'm_3',
-            accountId: 'acc_1',
-            name: 'Elena Jenkins',
-            relationship: 'Daughter • Minor',
-            accessTier: 3,
-            addedAt: DateTime.now(),
-          ));
-    }
-  }
-
   void _showAddMemberDialog() {
     final nameCtrl = TextEditingController();
     final relCtrl = TextEditingController();
@@ -97,10 +62,12 @@ class _FamilyMembersScreenState extends ConsumerState<FamilyMembersScreen> {
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
             ElevatedButton(
               onPressed: () {
+                final accountId = ref.read(authProvider)?.uid;
+                if (accountId == null) return;
                 if (nameCtrl.text.trim().isNotEmpty) {
                   ref.read(familyMembersProvider.notifier).addMember(FamilyMember(
                         memberId: 'm_${DateTime.now().millisecondsSinceEpoch}',
-                        accountId: 'acc_1',
+                        accountId: accountId,
                         name: nameCtrl.text.trim(),
                         relationship: relCtrl.text.trim().isEmpty ? 'Family' : relCtrl.text.trim(),
                         accessTier: selectedTier,
@@ -119,7 +86,11 @@ class _FamilyMembersScreenState extends ConsumerState<FamilyMembersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final members = ref.watch(familyMembersProvider);
+    final accountId = ref.watch(authProvider)?.uid;
+    final members = ref
+        .watch(familyMembersProvider)
+        .where((member) => accountId != null && member.accountId == accountId)
+        .toList();
 
     return Scaffold(
       backgroundColor: PresntTokens.background,

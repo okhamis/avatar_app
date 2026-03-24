@@ -14,37 +14,6 @@ class CredentialsVaultScreen extends ConsumerStatefulWidget {
 }
 
 class _CredentialsVaultScreenState extends ConsumerState<CredentialsVaultScreen> {
-  @override
-  void initState() {
-    super.initState();
-    Future.microtask(_seedMockData);
-  }
-
-  void _seedMockData() {
-    final creds = ref.read(credentialsVaultProvider);
-    if (creds.isEmpty) {
-      final now = DateTime.now();
-      ref.read(credentialsVaultProvider.notifier).addCredential(CredentialModel(
-        credentialId: 'c_1',
-        accountId: 'acc_1',
-        credentialType: 'SSN',
-        maskedPreview: '***-**-1234',
-        encryptedReference: 'enc_ref_ssn_abc',
-        createdAt: now,
-        updatedAt: now,
-      ));
-      ref.read(credentialsVaultProvider.notifier).addCredential(CredentialModel(
-        credentialId: 'c_2',
-        accountId: 'acc_1',
-        credentialType: 'Home Address',
-        maskedPreview: '123 Main St, ***',
-        encryptedReference: 'enc_ref_addr_xyz',
-        createdAt: now,
-        updatedAt: now,
-      ));
-    }
-  }
-
   Future<void> _gateWithBiometric(VoidCallback action) async {
     final biometric = ref.read(biometricServiceProvider);
     final ok = await biometric.authenticate('Authenticate to access your credentials vault');

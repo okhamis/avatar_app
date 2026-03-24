@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import '../config/app_config.dart';
+
 class HeyGenService {
   String? _sessionId;
   
@@ -22,16 +24,22 @@ class HeyGenService {
       return null;
     }
 
+    final avatarName = AppConfig.heygenStreamingAvatarName;
+    if (avatarName.isEmpty) {
+      debugPrint('HeyGen streaming skipped: set HEYGEN_STREAMING_AVATAR_NAME in .env');
+      return null;
+    }
+
     try {
       final response = await http.post(
-        Uri.parse('https://api.heygen.com/v1/streaming.new'),
+        Uri.parse(AppConfig.heygenStreamingNewUrl),
         headers: {
           'x-api-key': apiKey,
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
-          'quality': 'high',
-          'avatar_name': 'josh_lite3_20230714' // Replaced programmatically with User's cloned Face ID
+          'quality': AppConfig.heygenStreamingQuality,
+          'avatar_name': avatarName,
         }),
       );
 
@@ -59,7 +67,7 @@ class HeyGenService {
 
     try {
       final response = await http.post(
-        Uri.parse('https://api.heygen.com/v1/streaming.task'),
+        Uri.parse(AppConfig.heygenStreamingTaskUrl),
         headers: {
           'x-api-key': apiKey,
           'Content-Type': 'application/json',
@@ -67,7 +75,7 @@ class HeyGenService {
         body: jsonEncode({
           'session_id': _sessionId,
           'text': textPayload,
-          'task_type': 'text' // Change to 'audio' if bypassing HeyGen TTS entirely to use ElevenLabs
+          'task_type': AppConfig.heygenTaskType,
         }),
       );
 
@@ -86,7 +94,7 @@ class HeyGenService {
     final apiKey = dotenv.env['HEYGEN_API_KEY'];
     try {
       await http.post(
-        Uri.parse('https://api.heygen.com/v1/streaming.stop'),
+        Uri.parse(AppConfig.heygenStreamingStopUrl),
         headers: {
           'x-api-key': apiKey ?? '',
           'Content-Type': 'application/json',

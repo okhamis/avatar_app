@@ -18,16 +18,23 @@ class PresntGradientCta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onPressed != null;
+    final borderRadius = BorderRadius.circular(16);
     return Opacity(
       opacity: enabled ? 1 : 0.45,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onPressed,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: borderRadius,
+          overlayColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.pressed)) {
+              return PresntTokens.onPrimaryFixed.withValues(alpha: 0.12);
+            }
+            return null;
+          }),
           child: Ink(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: borderRadius,
               gradient: PresntTokens.primaryCtaGradient,
               boxShadow: [
                 if (enabled)
@@ -42,15 +49,20 @@ class PresntGradientCta extends StatelessWidget {
               padding: padding,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
+                mainAxisSize: MainAxisSize.max,
                 children: [
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      color: PresntTokens.onPrimaryFixed,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.3,
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: PresntTokens.onPrimaryFixed,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                      ),
                     ),
                   ),
                   if (trailing != null) ...[

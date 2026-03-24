@@ -1,7 +1,10 @@
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../config/app_config.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/avatar_model.dart';
 import '../services/behavioral_llm.dart';
 import '../services/claude_service.dart';
@@ -19,7 +22,7 @@ final avatarFirebaseServiceProvider = Provider((ref) => FirebaseService());
 final behavioralLlmProvider = Provider<BehavioralLlm>((ref) {
   String mode = 'gemini';
   try {
-    mode = dotenv.env['BEHAVIOR_LLM']?.toLowerCase().trim() ?? 'gemini';
+    mode = AppConfig.behaviorLlm;
   } catch (_) {
     mode = 'gemini';
   }
@@ -61,9 +64,13 @@ class AvatarNotifier extends Notifier<AvatarModel?> {
   }) async {
     final now = DateTime.now();
     final current = state ?? _newDraft(ownerId, now);
+    String? previewPath = current.previewImagePath;
+    if (imagePaths.isNotEmpty) {
+      previewPath = await _stablePreviewPath(imagePaths.first, ownerId);
+    }
     final next = current.copyWith(
       status: AvatarStatus.training,
-      previewImagePath: imagePaths.isNotEmpty ? imagePaths.first : current.previewImagePath,
+      previewImagePath: previewPath,
       faceSampleCount: imagePaths.length,
       lastUpdated: now,
       lastErrorCode: null,
@@ -73,6 +80,7 @@ class AvatarNotifier extends Notifier<AvatarModel?> {
     try {
       await _firebaseService.saveAvatarProfile(next);
       await _firebaseService.updateUserTrainingFlags(uid: ownerId, hasFaceTrained: imagePaths.isNotEmpty);
+      await _tryUploadPreviewToCloud(next, ownerId);
     } catch (e) {
       if (_isNoAppInDebug(e)) return;
       rethrow;
@@ -175,13 +183,18 @@ class AvatarNotifier extends Notifier<AvatarModel?> {
         if (!_isNoAppInDebug(e)) rethrow;
       }
 
+      String? resolvedPreview;
+      if (faceImagePaths.isNotEmpty) {
+        resolvedPreview = await _stablePreviewPath(faceImagePaths.first, ownerId);
+      }
+
       final withTrainingData = (state ?? current).copyWith(
         faceId: faceId,
         voiceId: voiceId,
         behaviorProfileId: behaviorId,
         faceSampleCount: faceImagePaths.length,
         hasVoiceSample: voiceSamplePath.isNotEmpty,
-        previewImagePath: faceImagePaths.isNotEmpty ? faceImagePaths.first : null,
+        previewImagePath: resolvedPreview,
       );
       final next = withTrainingData.copyWith(
         fidelityScore: _computeFidelity(withTrainingData),
@@ -193,6 +206,7 @@ class AvatarNotifier extends Notifier<AvatarModel?> {
       state = next;
       try {
         await _firebaseService.saveAvatarProfile(next);
+        await _tryUploadPreviewToCloud(next, ownerId);
       } catch (e) {
         if (!_isNoAppInDebug(e)) rethrow;
       }
@@ -262,5 +276,37 @@ class AvatarNotifier extends Notifier<AvatarModel?> {
       return true;
     }
     return false;
+  }
+
+  /// Copies the picked file into app documents so tmp/cache paths are not reused incorrectly after restart.
+  Future<String?> _stablePreviewPath(String source, String ownerId) async {
+    if (source.startsWith('http')) return source;
+    final src = File(source);
+    if (!await src.exists()) return source;
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final destPath = '${dir.path}/avatar_preview_$ownerId.jpg';
+      await src.copy(destPath);
+      return destPath;
+    } catch (e) {
+      debugPrint('[avatar] preview copy to documents failed: $e');
+      return source;
+    }
+  }
+
+  Future<void> _tryUploadPreviewToCloud(AvatarModel model, String ownerId) async {
+    final path = model.previewImagePath;
+    if (path == null || path.isEmpty || path.startsWith('http')) return;
+    final file = File(path);
+    if (!await file.exists()) return;
+    try {
+      final url = await _firebaseService.uploadAvatarPreviewImage(ownerId: ownerId, file: file);
+      if (url == null || url.isEmpty) return;
+      final synced = model.copyWith(previewImagePath: url, lastUpdated: DateTime.now());
+      state = synced;
+      await _firebaseService.saveAvatarProfile(synced);
+    } catch (e) {
+      debugPrint('[avatar] preview cloud sync failed: $e');
+    }
   }
 }

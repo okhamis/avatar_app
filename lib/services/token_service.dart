@@ -16,7 +16,7 @@ class TokenService {
       timeoutSeconds: 300,
       used: false,
       invalidated: false,
-      biometricRef: "bio_ref_123",
+      biometricRef: 'bio_${_uuid.v4()}',
     );
   }
 }

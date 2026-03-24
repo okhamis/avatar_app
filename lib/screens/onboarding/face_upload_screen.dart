@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../config/app_config.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/avatar_provider.dart';
 import '../../routes/route_names.dart';
@@ -27,8 +28,8 @@ class FaceUploadScreen extends ConsumerStatefulWidget {
 }
 
 class _FaceUploadScreenState extends ConsumerState<FaceUploadScreen> {
-  static const int kMax = 10;
-  static const int kMin = 5;
+  int get _minPhotos => AppConfig.faceUploadMinPhotos;
+  int get _maxPhotos => AppConfig.faceUploadMaxPhotos;
 
   final ImagePicker _picker = ImagePicker();
   final List<XFile> _photos = [];
@@ -37,21 +38,25 @@ class _FaceUploadScreenState extends ConsumerState<FaceUploadScreen> {
   void initState() {
     super.initState();
     if (widget.initialPhotos.isNotEmpty) {
-      _photos.addAll(widget.initialPhotos.take(kMax));
+      _photos.addAll(widget.initialPhotos.take(_maxPhotos));
     }
   }
 
   Future<void> _pickGallery() async {
     try {
+      debugPrint('[FACE_UPLOAD] Opening gallery picker...');
       final images = await _picker.pickMultiImage();
+      debugPrint('[FACE_UPLOAD] Picked ${images.length} images');
       if (images.isEmpty) return;
       setState(() {
         for (final img in images) {
-          if (_photos.length >= kMax) break;
+          if (_photos.length >= _maxPhotos) break;
           _photos.add(img);
         }
+        debugPrint('[FACE_UPLOAD] Total photos now: ${_photos.length}/$_minPhotos minimum');
       });
     } catch (e) {
+      debugPrint('[FACE_UPLOAD] Gallery picker error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
@@ -60,7 +65,7 @@ class _FaceUploadScreenState extends ConsumerState<FaceUploadScreen> {
 
   Future<void> _pickCamera() async {
     try {
-      if (_photos.length >= kMax) return;
+      if (_photos.length >= _maxPhotos) return;
       final photo = await _picker.pickImage(source: ImageSource.camera);
       if (photo != null) {
         setState(() => _photos.add(photo));
@@ -72,7 +77,7 @@ class _FaceUploadScreenState extends ConsumerState<FaceUploadScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canContinue = _photos.length >= kMin;
+    final canContinue = _photos.length >= _minPhotos;
     return Scaffold(
       backgroundColor: PresntTokens.surface,
       extendBodyBehindAppBar: true,
@@ -166,25 +171,46 @@ class _FaceUploadScreenState extends ConsumerState<FaceUploadScreen> {
                 child: ElevatedButton(
                   onPressed: canContinue
                       ? () async {
+                          debugPrint('[FACE_UPLOAD] Continue pressed with ${_photos.length} photos');
                           final user = ref.read(authProvider);
-                          if (user == null) return;
-                          final paths = _photos.map((p) => p.path).toList();
-                          try {
-                            await ref.read(avatarProvider.notifier).saveFaceDraft(ownerId: user.uid, imagePaths: paths);
-                            await ref.read(authProvider.notifier).updateTrainingFlags(hasFaceTrained: true);
-                            if (!context.mounted) return;
-                            context.goNamed(RouteNames.voiceRecord);
-                          } catch (_) {
+                          debugPrint('[FACE_UPLOAD] User: uid=${user?.uid}');
+                          if (user == null) {
+                            debugPrint('[FACE_UPLOAD] User is null on continue');
                             if (!context.mounted) return;
                             if (kDebugMode) {
-                              // Keep local demo flow unblocked when backend wiring is absent.
+                              debugPrint('[FACE_UPLOAD] Debug mode: continuing without user');
                               context.goNamed(RouteNames.voiceRecord);
                               return;
                             }
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('We could not process photos right now. Please try again.')),
+                              const SnackBar(content: Text('Session expired. Please sign in again.')),
                             );
+                            return;
                           }
+
+                          final paths = _photos.map((p) => p.path).toList();
+                          final notifier = ref.read(avatarProvider.notifier);
+                          final authNotifier = ref.read(authProvider.notifier);
+
+                          // 1. Update training flag — triggers GoRouter redirect to /voice-record.
+                          try {
+                            await authNotifier.updateTrainingFlags(hasFaceTrained: true);
+                            debugPrint('[FACE_UPLOAD] hasFaceTrained=true set');
+                          } catch (flagErr) {
+                            debugPrint('[FACE_UPLOAD] Could not set training flag: $flagErr');
+                          }
+
+                          // 2. Save draft fire-and-forget (avatar state change must not block navigation).
+                          notifier.saveFaceDraft(ownerId: user.uid, imagePaths: paths).then((_) {
+                            debugPrint('[FACE_UPLOAD] Face draft saved');
+                          }).catchError((Object e) {
+                            debugPrint('[FACE_UPLOAD] Face draft save error (non-blocking): $e');
+                          });
+
+                          // 3. Navigate explicitly in case redirect hasn't fired yet.
+                          if (!context.mounted) return;
+                          debugPrint('[FACE_UPLOAD] Navigating to voiceRecord');
+                          context.goNamed(RouteNames.voiceRecord);
                         }
                       : null,
                   style: ElevatedButton.styleFrom(
@@ -211,7 +237,7 @@ class _FaceUploadScreenState extends ConsumerState<FaceUploadScreen> {
               Text(
                 canContinue
                     ? 'Ready to proceed to the next step'
-                    : 'Upload at least $kMin photos to continue',
+                    : 'Upload at least $_minPhotos photos to continue',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
                   fontSize: 9,
