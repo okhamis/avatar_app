@@ -17,21 +17,12 @@ import '../screens/conversations/conversation_list_screen.dart';
 import '../screens/conversations/live_conversation_screen.dart';
 import '../screens/conversations/transcript_detail_screen.dart';
 
-import '../screens/approvals/pending_approvals_screen.dart';
-import '../screens/approvals/approval_history_screen.dart';
-
-import '../screens/family/family_members_screen.dart';
-import '../screens/family/access_tiers_screen.dart';
-import '../screens/family/posthumous_settings_screen.dart';
-
 import '../screens/settings/avatar_setup_screen.dart';
-import '../screens/settings/action_policies_screen.dart';
-import '../screens/settings/credentials_vault_screen.dart';
-import '../screens/settings/integrations_screen.dart';
 
 import '../theme/app_colors.dart';
 import '../providers/auth_provider.dart';
 import '../providers/avatar_provider.dart';
+import '../providers/streaming_settings_provider.dart';
 import '../models/avatar_model.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -45,7 +36,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final path = state.uri.path;
       if (user == null) {
-        if (path == '/home' || path.startsWith('/conversations') || path.startsWith('/approvals') || path.startsWith('/family') || path.startsWith('/settings')) {
+        if (path == '/home' || path.startsWith('/conversations') || path.startsWith('/settings')) {
           return '/welcome';
         }
         return null;
@@ -54,11 +45,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Face upload & voice recording are skipped for now — D-ID agent has its
       // own presenter configured in Studio. These steps will be re-enabled when
       // the face-cloning + voice-cloning pipeline is wired up.
-      // Onboarding steps skipped — D-ID agent handles avatar rendering.
-      // Re-enable when face-cloning + voice-cloning + behavioral pipelines are wired up.
-      // if (!user.hasFaceTrained) return path == '/face-upload' ? null : '/face-upload';
-      // if (!user.hasVoiceCloned) return path == '/voice-record' ? null : '/voice-record';
-      // if (!user.hasBehaviorTrained) return path == '/behavioral-training' ? null : '/behavioral-training';
+      // In Custom mode, require full onboarding (photo → voice → behavioral).
+      // In Studio mode, skip straight to home (D-ID agent is pre-configured).
+      final avatarMode = ref.read(avatarModeProvider);
+      if (avatarMode == AvatarMode.custom) {
+        if (!user.hasFaceTrained) return path == '/face-upload' ? null : '/face-upload';
+        if (!user.hasVoiceCloned) return path == '/voice-record' ? null : '/voice-record';
+        if (!user.hasBehaviorTrained) return path == '/behavioral-training' ? null : '/behavioral-training';
+      }
       if (!user.isLive) {
         if (path == '/go-live' || path == '/avatar-preview') return null;
         return '/avatar-preview';
@@ -143,8 +137,6 @@ final routerProvider = Provider<GoRouter>((ref) {
               items: const [
                 BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
                 BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chats'),
-                BottomNavigationBarItem(icon: Icon(Icons.security), label: 'Approvals'),
-                BottomNavigationBarItem(icon: Icon(Icons.family_restroom), label: 'Family'),
                 BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
               ],
             ),
@@ -184,63 +176,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/approvals',
-                name: RouteNames.approvals,
-                builder: (context, state) => const PendingApprovalsScreen(),
-                routes: [
-                  GoRoute(
-                    path: 'history',
-                    name: RouteNames.approvalHistory,
-                    builder: (context, state) => const ApprovalHistoryScreen(),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/family',
-                name: RouteNames.family,
-                builder: (context, state) => const FamilyMembersScreen(),
-                routes: [
-                  GoRoute(
-                    path: 'tiers',
-                    name: RouteNames.accessTiers,
-                    builder: (context, state) => const AccessTiersScreen(),
-                  ),
-                  GoRoute(
-                    path: 'posthumous',
-                    name: RouteNames.posthumousSettings,
-                    builder: (context, state) => const PosthumousSettingsScreen(),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
                 path: '/settings',
                 name: RouteNames.settings,
                 builder: (context, state) => const AvatarSetupScreen(),
-                routes: [
-                  GoRoute(
-                    path: 'policies',
-                    name: RouteNames.actionPolicies,
-                    builder: (context, state) => const ActionPoliciesScreen(),
-                  ),
-                  GoRoute(
-                    path: 'vault',
-                    name: RouteNames.credentialsVault,
-                    builder: (context, state) => const CredentialsVaultScreen(),
-                  ),
-                  GoRoute(
-                    path: 'integrations',
-                    name: RouteNames.integrations,
-                    builder: (context, state) => const IntegrationsScreen(),
-                  ),
-                ],
               ),
             ],
           ),

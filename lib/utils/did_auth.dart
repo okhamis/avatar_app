@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 /// D-ID Studio provides the API key already formatted as `Basic <value>` or
 /// as a raw `username:password` string meant to be used directly after "Basic ".
 ///

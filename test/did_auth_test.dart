@@ -1,13 +1,11 @@
-import 'dart:convert';
-
 import 'package:ai_digital_twin/utils/did_auth.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('didBasicAuthorizationHeader encodes username:password per D-ID docs', () {
+  test('didBasicAuthorizationHeader passes key as-is per D-ID Studio format', () {
     expect(
       didBasicAuthorizationHeader('user:secret'),
-      'Basic ${base64Encode(utf8.encode('user:secret'))}',
+      'Basic user:secret',
     );
   });
 

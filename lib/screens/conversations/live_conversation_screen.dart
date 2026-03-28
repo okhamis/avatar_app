@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:ui';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -10,7 +9,6 @@ import 'dart:async';
 import '../../config/app_config.dart';
 import '../../routes/route_names.dart';
 import '../../providers/avatar_provider.dart';
-import '../../providers/approval_provider.dart';
 import '../../providers/session_provider.dart';
 import '../../services/heygen_service.dart';
 import '../../services/liveavatar_service.dart';
@@ -45,7 +43,6 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
   bool _sessionActive = true;
   Duration _elapsed = Duration.zero;
   Timer? _durationTimer;
-  bool _showApprovalBanner = false;
   final HeyGenService _heyGenService = HeyGenService();
   final LiveAvatarService _liveAvatarService = LiveAvatarService();
   final DidService _didService = DidService();
@@ -231,17 +228,6 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
     if (text.isEmpty || !_sessionActive) return;
     _msgController.clear();
     _addMessage(text, isAvatar: false);
-
-    final lower = text.toLowerCase();
-    final needsApproval = lower.contains('ssn') ||
-        lower.contains('password') ||
-        lower.contains('bank') ||
-        lower.contains('address') ||
-        lower.contains('credit card');
-    if (needsApproval && kDebugMode) {
-      setState(() => _showApprovalBanner = true);
-      await ref.read(pendingApprovalsProvider.notifier).mockIncomingRequest('acc_demo', 'sess_live', '****-****-9022');
-    }
 
     setState(() => _isTyping = true);
     final llm = ref.read(behavioralLlmProvider);
@@ -489,61 +475,6 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
                         ),
                 ),
 
-                if (_showApprovalBanner)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.35),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: PresntTokens.primary.withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Icon(Icons.verified_user_rounded, color: PresntTokens.primary, size: 20),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Credential verification',
-                                      style: GoogleFonts.manrope(
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 13,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Participant requesting approval',
-                                      style: GoogleFonts.inter(fontSize: 10, color: Colors.white54),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              TextButton(
-                                onPressed: () => setState(() => _showApprovalBanner = false),
-                                child: Text('Dismiss', style: GoogleFonts.inter(fontSize: 11, color: PresntTokens.primary)),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-
                 SizedBox(
                   height: 160,
                   child: ShaderMask(
@@ -689,35 +620,7 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
                         ),
                         child: Row(
                           children: [
-                            Expanded(
-                              child: Material(
-                                color: Colors.white.withValues(alpha: 0.06),
-                                borderRadius: BorderRadius.circular(20),
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(20),
-                                  onTap: _sessionActive
-                                      ? () => ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(content: Text('You have taken over the session.')),
-                                          )
-                                      : null,
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        const Icon(Icons.switch_account_rounded, color: PresntTokens.primary, size: 22),
-                                        const SizedBox(width: 10),
-                                        Text(
-                                          'Take Over',
-                                          style: GoogleFonts.manrope(fontWeight: FontWeight.w800, color: Colors.white),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
+                            const Spacer(),
                             IconButton(
                               style: IconButton.styleFrom(
                                 backgroundColor: _isListening

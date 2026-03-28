@@ -7,7 +7,6 @@ import '../../routes/route_names.dart';
 import '../../theme/presnt_tokens.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/avatar_provider.dart';
-import '../../providers/approval_provider.dart';
 import '../../providers/session_provider.dart';
 import '../../models/avatar_model.dart';
 import '../../widgets/avatar_preview_display.dart';
@@ -19,7 +18,6 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authProvider);
     final avatar = ref.watch(avatarProvider);
-    final pendingApprovals = ref.watch(pendingApprovalsProvider).where((t) => !t.used && !t.invalidated).length;
     final conversationCount = ref.watch(sessionsListProvider).length;
 
     final name = user?.fullName ?? 'Your Avatar';
@@ -122,22 +120,9 @@ class HomeScreen extends ConsumerWidget {
                       color: PresntTokens.onSurface.withValues(alpha: 0.85),
                     ),
                   ),
-                  Row(
-                    children: [
-                      if (pendingApprovals > 0)
-                        Badge(
-                          label: Text('$pendingApprovals', style: const TextStyle(fontSize: 10)),
-                          backgroundColor: PresntTokens.tertiaryContainer,
-                          child: IconButton(
-                            onPressed: () => context.goNamed(RouteNames.approvals),
-                            icon: const Icon(Icons.verified_user_outlined, color: PresntTokens.onSurface),
-                          ),
-                        ),
-                      IconButton(
-                        onPressed: () => context.goNamed(RouteNames.settings),
-                        icon: Icon(Icons.settings_suggest_outlined, color: PresntTokens.onSurface.withValues(alpha: 0.55)),
-                      ),
-                    ],
+                  IconButton(
+                    onPressed: () => context.goNamed(RouteNames.settings),
+                    icon: Icon(Icons.settings_suggest_outlined, color: PresntTokens.onSurface.withValues(alpha: 0.55)),
                   ),
                 ],
               ),
@@ -182,8 +167,6 @@ class HomeScreen extends ConsumerWidget {
                     Row(
                       children: [
                         Expanded(child: _miniStat('CONVERSATIONS', '$conversationCount', PresntTokens.primary)),
-                        Container(width: 1, height: 44, color: Colors.white.withValues(alpha: 0.12)),
-                        Expanded(child: _miniStat('APPROVALS', '$pendingApprovals', PresntTokens.secondary)),
                         Container(width: 1, height: 44, color: Colors.white.withValues(alpha: 0.12)),
                         Expanded(child: _miniStat('FIDELITY', '$fidelityPct%', Colors.white)),
                       ],
