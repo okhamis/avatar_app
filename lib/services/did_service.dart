@@ -6,14 +6,22 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../config/app_config.dart';
 import '../utils/did_auth.dart';
 
-/// D-ID Agents Streaming API (https://docs.d-id.com/reference/createagentstream).
+/// D-ID Streaming API — supports both the **Agents API** (Studio mode) and
+/// the **Talks/Streams API** (Custom Pipeline mode with user's own face+voice).
 ///
-/// Endpoints used:
+/// Agents API endpoints (Studio mode):
 ///   POST   /agents/{agentId}/streams            — create WebRTC session
 ///   POST   /agents/{agentId}/streams/{id}/sdp   — send SDP answer
 ///   POST   /agents/{agentId}/streams/{id}/ice   — submit ICE candidate
 ///   POST   /agents/{agentId}/streams/{id}       — speak text
 ///   DELETE /agents/{agentId}/streams/{id}       — close session
+///
+/// Talks/Streams API endpoints (Custom Pipeline mode):
+///   POST   /talks/streams                       — create WebRTC session (with source_url)
+///   POST   /talks/streams/{id}/sdp              — send SDP answer
+///   POST   /talks/streams/{id}/ice              — submit ICE candidate
+///   POST   /talks/streams/{id}                  — speak text
+///   DELETE /talks/streams/{id}                  — close session
 class DidService {
   String? get _apiKey {
     String? raw;
@@ -44,17 +52,19 @@ class DidService {
   }
 
   String _agentsBase() => '${AppConfig.didApiBase}/agents/${_agentId!}/streams';
+  String _talksBase() => '${AppConfig.didApiBase}/talks/streams';
 
-  /// Last error from [createStream] — surfaced in the widget for debugging.
+  /// The base URL used for the *current* session (set by createStream / createCustomStream).
+  String? _activeBase;
+
+  /// Last error — surfaced in the widget for debugging.
   String? lastError;
 
-  /// Creates a new WebRTC session via the Agents API.
-  ///
-  /// Returns the full response body on success, which includes:
-  ///   - `id`          : stream ID
-  ///   - `session_id`  : session ID
-  ///   - `jsep`        : SDP offer (`{ type: "offer", sdp: "..." }`)
-  ///   - `ice_servers` : array of ICE server configs to pass to RTCPeerConnection
+  // ---------------------------------------------------------------------------
+  // Studio mode — Agents API
+  // ---------------------------------------------------------------------------
+
+  /// Creates a new WebRTC session via the **Agents API** (Studio mode).
   Future<Map<String, dynamic>?> createStream() async {
     lastError = null;
     final headers = _authHeaders;
@@ -71,22 +81,60 @@ class DidService {
       return null;
     }
 
-    final url = Uri.parse(_agentsBase());
-    try {
-      final res = await http.post(
-        url,
-        headers: headers,
-        body: jsonEncode({
-          'compatibility_mode': 'on', // VP8 codec — most compatible
-          'stream_warmup': false,
-        }),
-      );
+    _activeBase = _agentsBase();
+    return _postCreate(_activeBase!, headers, {
+      'compatibility_mode': 'on',
+      'stream_warmup': false,
+    });
+  }
 
+  // ---------------------------------------------------------------------------
+  // Custom Pipeline mode — Talks/Streams API
+  // ---------------------------------------------------------------------------
+
+  /// Creates a new WebRTC session via the **Talks/Streams API** (Custom mode).
+  ///
+  /// [sourceUrl] is the HTTPS URL of the user's face photo (from Firebase Storage).
+  Future<Map<String, dynamic>?> createCustomStream({required String sourceUrl}) async {
+    lastError = null;
+    final headers = _authHeaders;
+    if (headers == null) {
+      lastError = 'DID_API_KEY missing or invalid in .env';
+      debugPrint('D-ID: $lastError');
+      return null;
+    }
+
+    if (sourceUrl.isEmpty) {
+      lastError = 'No face photo URL — complete Custom Pipeline onboarding first';
+      debugPrint('D-ID: $lastError');
+      return null;
+    }
+
+    _activeBase = _talksBase();
+    return _postCreate(_activeBase!, headers, {
+      'source_url': sourceUrl,
+      'compatibility_mode': 'on',
+      'stream_warmup': false,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Shared methods — work with both APIs (routes differ only by base path)
+  // ---------------------------------------------------------------------------
+
+  Future<Map<String, dynamic>?> _postCreate(
+    String base,
+    Map<String, String> headers,
+    Map<String, dynamic> body,
+  ) async {
+    final url = Uri.parse(base);
+    try {
+      final res = await http.post(url, headers: headers, body: jsonEncode(body));
       if (res.statusCode == 201 || res.statusCode == 200) {
         return jsonDecode(res.body) as Map<String, dynamic>;
       }
-      final body = res.body.length > 300 ? '${res.body.substring(0, 300)}…' : res.body;
-      lastError = 'HTTP ${res.statusCode}: $body';
+      final snippet = res.body.length > 300 ? '${res.body.substring(0, 300)}…' : res.body;
+      lastError = 'HTTP ${res.statusCode}: $snippet';
       debugPrint('D-ID createStream error: $lastError');
       return null;
     } catch (e) {
@@ -103,9 +151,9 @@ class DidService {
     required Map<String, dynamic> answer,
   }) async {
     final headers = _authHeaders;
-    if (headers == null) return false;
+    if (headers == null || _activeBase == null) return false;
 
-    final url = Uri.parse('${_agentsBase()}/$streamId/sdp');
+    final url = Uri.parse('$_activeBase/$streamId/sdp');
     try {
       final res = await http.post(
         url,
@@ -133,9 +181,9 @@ class DidService {
     required String sdpMid,
   }) async {
     final headers = _authHeaders;
-    if (headers == null) return;
+    if (headers == null || _activeBase == null) return;
 
-    final url = Uri.parse('${_agentsBase()}/$streamId/ice');
+    final url = Uri.parse('$_activeBase/$streamId/ice');
     try {
       await http.post(
         url,
@@ -154,8 +202,8 @@ class DidService {
 
   /// Sends a speak task — the avatar will lip-sync the provided [text].
   ///
-  /// Uses the same script payload format as the legacy API; the Agents API
-  /// accepts it at POST /agents/{agentId}/streams/{streamId}.
+  /// For Custom Pipeline, set [voiceProvider] to `'elevenlabs'` and [voiceId]
+  /// to the user's cloned ElevenLabs voice ID.
   Future<void> sendTask({
     required String streamId,
     required String sessionId,
@@ -164,9 +212,9 @@ class DidService {
     String? voiceId,
   }) async {
     final headers = _authHeaders;
-    if (headers == null) return;
+    if (headers == null || _activeBase == null) return;
 
-    final url = Uri.parse('${_agentsBase()}/$streamId');
+    final url = Uri.parse('$_activeBase/$streamId');
     try {
       final res = await http.post(
         url,
@@ -200,9 +248,9 @@ class DidService {
     required String sessionId,
   }) async {
     final headers = _authHeaders;
-    if (headers == null) return;
+    if (headers == null || _activeBase == null) return;
 
-    final url = Uri.parse('${_agentsBase()}/$streamId');
+    final url = Uri.parse('$_activeBase/$streamId');
     try {
       await http.delete(
         url,

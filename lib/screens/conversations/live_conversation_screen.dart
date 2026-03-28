@@ -280,7 +280,26 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
 
   @override
   Widget build(BuildContext context) {
-    final previewPath = ref.watch(avatarProvider)?.previewImagePath;
+    final avatar = ref.watch(avatarProvider);
+    final previewPath = avatar?.previewImagePath;
+    final avatarMode = ref.watch(avatarModeProvider);
+
+    String? customSourceUrl;
+    String? customVoiceId;
+    String? customVoiceProvider;
+    if (avatarMode == AvatarMode.custom && avatar != null) {
+      final preview = avatar.previewImagePath ?? '';
+      if (preview.startsWith('http')) {
+        customSourceUrl = preview;
+      } else if (AppConfig.didSourceUrl.isNotEmpty) {
+        customSourceUrl = AppConfig.didSourceUrl;
+      }
+      if (avatar.voiceId.isNotEmpty) {
+        customVoiceId = avatar.voiceId;
+        customVoiceProvider = 'elevenlabs';
+      }
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -292,6 +311,9 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
                 key: _didVideoKey,
                 didService: _didService,
                 fillScreen: true,
+                sourceUrl: customSourceUrl,
+                voiceId: customVoiceId,
+                voiceProvider: customVoiceProvider,
               ),
             )
           else if (_heyGenSession != null)

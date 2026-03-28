@@ -9,10 +9,22 @@ class DidWebrtcVideo extends StatefulWidget {
     super.key,
     required this.didService,
     this.fillScreen = false,
+    this.sourceUrl,
+    this.voiceId,
+    this.voiceProvider,
   });
 
   final DidService didService;
   final bool fillScreen;
+
+  /// When non-null, uses the Talks/Streams API with this face photo URL (Custom Pipeline).
+  final String? sourceUrl;
+
+  /// ElevenLabs cloned voice ID for Custom Pipeline. Passed to sendTask.
+  final String? voiceId;
+
+  /// Voice provider override (e.g. 'elevenlabs'). Defaults to 'microsoft' in Studio mode.
+  final String? voiceProvider;
 
   @override
   DidWebrtcVideoState createState() => DidWebrtcVideoState();
@@ -44,7 +56,10 @@ class DidWebrtcVideoState extends State<DidWebrtcVideo> {
     _initialized = true;
 
     try {
-      final sessionData = await widget.didService.createStream();
+      final isCustom = widget.sourceUrl != null && widget.sourceUrl!.isNotEmpty;
+      final sessionData = isCustom
+          ? await widget.didService.createCustomStream(sourceUrl: widget.sourceUrl!)
+          : await widget.didService.createStream();
       if (sessionData == null || !mounted) {
         setState(() => _status = 'D-ID Session Failed');
         return;
@@ -129,6 +144,8 @@ class DidWebrtcVideoState extends State<DidWebrtcVideo> {
         streamId: streamId!,
         sessionId: sessionId!,
         text: text,
+        voiceProvider: widget.voiceProvider,
+        voiceId: widget.voiceId,
       );
     }
   }
