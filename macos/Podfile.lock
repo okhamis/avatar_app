@@ -1212,6 +1212,15 @@ PODS:
     - Firebase/Firestore (~> 12.9.0)
     - firebase_core
     - FlutterMacOS
+  - cloud_functions (6.1.0):
+    - Firebase/CoreOnly (~> 12.9.0)
+    - Firebase/Functions (~> 12.9.0)
+    - firebase_core
+    - FlutterMacOS
+  - connectivity_plus (0.0.1):
+    - FlutterMacOS
+  - device_info_plus (0.0.1):
+    - FlutterMacOS
   - facebook_auth_desktop (0.0.3):
     - FlutterMacOS
   - file_selector_macos (0.0.1):
@@ -1224,13 +1233,24 @@ PODS:
   - Firebase/Firestore (12.9.0):
     - Firebase/CoreOnly
     - FirebaseFirestore (~> 12.9.0)
+  - Firebase/Functions (12.9.0):
+    - Firebase/CoreOnly
+    - FirebaseFunctions (~> 12.9.0)
+  - Firebase/Storage (12.9.0):
+    - Firebase/CoreOnly
+    - FirebaseStorage (~> 12.9.0)
   - firebase_auth (6.2.0):
     - Firebase/Auth (~> 12.9.0)
     - Firebase/CoreOnly (~> 12.9.0)
     - firebase_core
     - FlutterMacOS
-  - firebase_core (4.5.0):
+  - firebase_core (4.6.0):
     - Firebase/CoreOnly (~> 12.9.0)
+    - FlutterMacOS
+  - firebase_storage (13.2.0):
+    - Firebase/CoreOnly (~> 12.9.0)
+    - Firebase/Storage (~> 12.9.0)
+    - firebase_core
     - FlutterMacOS
   - FirebaseAppCheckInterop (12.9.0)
   - FirebaseAuth (12.9.0):
@@ -1271,12 +1291,31 @@ PODS:
     - gRPC-Core (~> 1.69.0)
     - leveldb-library (~> 1.22)
     - nanopb (~> 3.30910.0)
+  - FirebaseFunctions (12.9.0):
+    - FirebaseAppCheckInterop (~> 12.9.0)
+    - FirebaseAuthInterop (~> 12.9.0)
+    - FirebaseCore (~> 12.9.0)
+    - FirebaseCoreExtension (~> 12.9.0)
+    - FirebaseMessagingInterop (~> 12.9.0)
+    - FirebaseSharedSwift (~> 12.9.0)
+    - GTMSessionFetcher/Core (< 6.0, >= 3.4)
+  - FirebaseMessagingInterop (12.9.0)
   - FirebaseSharedSwift (12.9.0)
+  - FirebaseStorage (12.9.0):
+    - FirebaseAppCheckInterop (~> 12.9.0)
+    - FirebaseAuthInterop (~> 12.9.0)
+    - FirebaseCore (~> 12.9.0)
+    - FirebaseCoreExtension (~> 12.9.0)
+    - GoogleUtilities/Environment (~> 8.1)
+    - GTMSessionFetcher/Core (< 6.0, >= 3.4)
   - flutter_secure_storage_darwin (10.0.0):
     - Flutter
     - FlutterMacOS
   - flutter_tts (0.0.1):
     - FlutterMacOS
+  - flutter_webrtc (1.4.0):
+    - FlutterMacOS
+    - WebRTC-SDK (= 144.7559.01)
   - FlutterMacOS (1.0.0)
   - google_sign_in_ios (0.0.1):
     - Flutter
@@ -1413,6 +1452,10 @@ PODS:
   - GTMSessionFetcher/Full (3.5.0):
     - GTMSessionFetcher/Core
   - leveldb-library (1.22.6)
+  - livekit_client (2.7.0):
+    - flutter_webrtc
+    - FlutterMacOS
+    - WebRTC-SDK (= 144.7559.01)
   - local_auth_darwin (0.0.1):
     - Flutter
     - FlutterMacOS
@@ -1424,18 +1467,25 @@ PODS:
   - PromisesObjC (2.4.0)
   - record_macos (1.2.0):
     - FlutterMacOS
+  - WebRTC-SDK (144.7559.01)
 
 DEPENDENCIES:
   - audioplayers_darwin (from `Flutter/ephemeral/.symlinks/plugins/audioplayers_darwin/darwin`)
   - cloud_firestore (from `Flutter/ephemeral/.symlinks/plugins/cloud_firestore/macos`)
+  - cloud_functions (from `Flutter/ephemeral/.symlinks/plugins/cloud_functions/macos`)
+  - connectivity_plus (from `Flutter/ephemeral/.symlinks/plugins/connectivity_plus/macos`)
+  - device_info_plus (from `Flutter/ephemeral/.symlinks/plugins/device_info_plus/macos`)
   - facebook_auth_desktop (from `Flutter/ephemeral/.symlinks/plugins/facebook_auth_desktop/macos`)
   - file_selector_macos (from `Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos`)
   - firebase_auth (from `Flutter/ephemeral/.symlinks/plugins/firebase_auth/macos`)
   - firebase_core (from `Flutter/ephemeral/.symlinks/plugins/firebase_core/macos`)
+  - firebase_storage (from `Flutter/ephemeral/.symlinks/plugins/firebase_storage/macos`)
   - flutter_secure_storage_darwin (from `Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_darwin/darwin`)
   - flutter_tts (from `Flutter/ephemeral/.symlinks/plugins/flutter_tts/macos`)
+  - flutter_webrtc (from `Flutter/ephemeral/.symlinks/plugins/flutter_webrtc/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
   - google_sign_in_ios (from `Flutter/ephemeral/.symlinks/plugins/google_sign_in_ios/darwin`)
+  - livekit_client (from `Flutter/ephemeral/.symlinks/plugins/livekit_client/macos`)
   - local_auth_darwin (from `Flutter/ephemeral/.symlinks/plugins/local_auth_darwin/darwin`)
   - record_macos (from `Flutter/ephemeral/.symlinks/plugins/record_macos/macos`)
 
@@ -1454,7 +1504,10 @@ SPEC REPOS:
     - FirebaseCoreInternal
     - FirebaseFirestore
     - FirebaseFirestoreInternal
+    - FirebaseFunctions
+    - FirebaseMessagingInterop
     - FirebaseSharedSwift
+    - FirebaseStorage
     - GoogleSignIn
     - GoogleUtilities
     - "gRPC-C++"
@@ -1464,12 +1517,19 @@ SPEC REPOS:
     - leveldb-library
     - nanopb
     - PromisesObjC
+    - WebRTC-SDK
 
 EXTERNAL SOURCES:
   audioplayers_darwin:
     :path: Flutter/ephemeral/.symlinks/plugins/audioplayers_darwin/darwin
   cloud_firestore:
     :path: Flutter/ephemeral/.symlinks/plugins/cloud_firestore/macos
+  cloud_functions:
+    :path: Flutter/ephemeral/.symlinks/plugins/cloud_functions/macos
+  connectivity_plus:
+    :path: Flutter/ephemeral/.symlinks/plugins/connectivity_plus/macos
+  device_info_plus:
+    :path: Flutter/ephemeral/.symlinks/plugins/device_info_plus/macos
   facebook_auth_desktop:
     :path: Flutter/ephemeral/.symlinks/plugins/facebook_auth_desktop/macos
   file_selector_macos:
@@ -1478,14 +1538,20 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/firebase_auth/macos
   firebase_core:
     :path: Flutter/ephemeral/.symlinks/plugins/firebase_core/macos
+  firebase_storage:
+    :path: Flutter/ephemeral/.symlinks/plugins/firebase_storage/macos
   flutter_secure_storage_darwin:
     :path: Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_darwin/darwin
   flutter_tts:
     :path: Flutter/ephemeral/.symlinks/plugins/flutter_tts/macos
+  flutter_webrtc:
+    :path: Flutter/ephemeral/.symlinks/plugins/flutter_webrtc/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
   google_sign_in_ios:
     :path: Flutter/ephemeral/.symlinks/plugins/google_sign_in_ios/darwin
+  livekit_client:
+    :path: Flutter/ephemeral/.symlinks/plugins/livekit_client/macos
   local_auth_darwin:
     :path: Flutter/ephemeral/.symlinks/plugins/local_auth_darwin/darwin
   record_macos:
@@ -1498,11 +1564,15 @@ SPEC CHECKSUMS:
   audioplayers_darwin: 835ced6edd4c9fc8ebb0a7cc9e294a91d99917d5
   BoringSSL-GRPC: dded2a44897e45f28f08ae87a55ee4bcd19bc508
   cloud_firestore: 5d6c1cb7f6c050f66708f7c9cc1afee568a67713
+  cloud_functions: 6e7b7c874367d5adecda599c94475d69232dfe1e
+  connectivity_plus: 4adf20a405e25b42b9c9f87feff8f4b6fde18a4e
+  device_info_plus: 4fb280989f669696856f8b129e4a5e3cd6c48f76
   facebook_auth_desktop: bf89ccf460c903de45e86fa0c7878b8b62db65fb
   file_selector_macos: 9e9e068e90ebee155097d00e89ae91edb2374db7
   Firebase: 065f2bb395062046623036d8e6dc857bc2521d56
   firebase_auth: def738277a306ec5676724b44ce49b37edd3bc91
-  firebase_core: c74b220e9288decea6bed17399c249734a7e76d2
+  firebase_core: 82d678e9e10fc0b515ea1872dd446eee4722f144
+  firebase_storage: 9413f3b3326f464e086de5be4f4e6177bbf0ae1a
   FirebaseAppCheckInterop: 4bade10286cc977e516f75d2d8312cbdfa534789
   FirebaseAuth: 3a39f6436c21ebfd7919b698228b4f89ff94c23b
   FirebaseAuthInterop: f8f6ff72dc24621906497fbe5cf3c42ee815e59c
@@ -1511,9 +1581,13 @@ SPEC CHECKSUMS:
   FirebaseCoreInternal: b321eafae5362113bc182956fafc9922cfc77b72
   FirebaseFirestore: d8b76ca1feb4ca0b0f078c45f7d1bd8014a49ef1
   FirebaseFirestoreInternal: 02341a9ba87f6309227b04685022a5e16307bbf7
+  FirebaseFunctions: 3312aea81319803c25b65de45343a004e6bb1221
+  FirebaseMessagingInterop: 2aab0b11571c2e9f95e08bafa99facb4367641b1
   FirebaseSharedSwift: 9d2fa84a46676302b89dbd5e6e62bce2fe376909
+  FirebaseStorage: 3ba2348d876c295236cdd9f408a62d3f9ff8e6b5
   flutter_secure_storage_darwin: acdb3f316ed05a3e68f856e0353b133eec373a23
   flutter_tts: ae915565cc6948444b513acc8ee021993281e027
+  flutter_webrtc: f1fb1a00c6080461bb2bc6caa5b93d07ddb68466
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   google_sign_in_ios: 000870aa06da9b28d1d0bf7ef70ff0213059dd28
   GoogleSignIn: fcee2257188d5eda57a5e2b6a715550ffff9206d
@@ -1523,11 +1597,13 @@ SPEC CHECKSUMS:
   GTMAppAuth: 217a876b249c3c585a54fd6f73e6b58c4f5c4238
   GTMSessionFetcher: 5aea5ba6bd522a239e236100971f10cb71b96ab6
   leveldb-library: cc8b8f8e013647a295ad3f8cd2ddf49a6f19be19
+  livekit_client: 3e024a31e364d4a2e0deda1b3908e93933dbf6dc
   local_auth_darwin: c3ee6cce0a8d56be34c8ccb66ba31f7f180aaebb
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
   record_macos: 7f227161b93c49e7e34fe681c5891c8622c8cc8b
+  WebRTC-SDK: ab9b5319e458c2bfebdc92b3600740da35d5630d
 
-PODFILE CHECKSUM: 0b2a1d680b369b4f849f6221936065fc455e930f
+PODFILE CHECKSUM: 7ac4f3563596767b1e789d93783fb2690c2d8b86
 
 COCOAPODS: 1.16.2

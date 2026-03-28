@@ -1,5 +1,5 @@
 name: ai_digital_twin
-description: "A new Flutter project."
+description: "A secure digital twin sandbox app integrating LiveAvatar, D-ID, and LLMs."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -54,6 +54,9 @@ dependencies:
   record: ^6.1.1
   audioplayers: ^6.1.0
   firebase_storage: ^13.2.0
+  livekit_client: ^2.7.0
+  cloud_functions: ^6.1.0
+  flutter_webrtc: ^1.4.0
 
 dev_dependencies:
   flutter_test:
@@ -79,7 +82,7 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-    - .env
+    - .env # gitignored — only present locally; never committed. Safe as asset for dev.
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
 

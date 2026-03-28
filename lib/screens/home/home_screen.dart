@@ -8,6 +8,7 @@ import '../../theme/presnt_tokens.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/avatar_provider.dart';
 import '../../providers/approval_provider.dart';
+import '../../providers/session_provider.dart';
 import '../../models/avatar_model.dart';
 import '../../widgets/avatar_preview_display.dart';
 
@@ -19,6 +20,7 @@ class HomeScreen extends ConsumerWidget {
     final user = ref.watch(authProvider);
     final avatar = ref.watch(avatarProvider);
     final pendingApprovals = ref.watch(pendingApprovalsProvider).where((t) => !t.used && !t.invalidated).length;
+    final conversationCount = ref.watch(sessionsListProvider).length;
 
     final name = user?.fullName ?? 'Your Avatar';
     final status = (avatar?.status ?? AvatarStatus.draft).name;
@@ -179,7 +181,7 @@ class HomeScreen extends ConsumerWidget {
                     const SizedBox(height: 28),
                     Row(
                       children: [
-                        Expanded(child: _miniStat('CONVERSATIONS', '0', PresntTokens.primary)),
+                        Expanded(child: _miniStat('CONVERSATIONS', '$conversationCount', PresntTokens.primary)),
                         Container(width: 1, height: 44, color: Colors.white.withValues(alpha: 0.12)),
                         Expanded(child: _miniStat('APPROVALS', '$pendingApprovals', PresntTokens.secondary)),
                         Container(width: 1, height: 44, color: Colors.white.withValues(alpha: 0.12)),

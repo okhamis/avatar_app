@@ -1,0 +1,17 @@
+{
+  "name": "aidigitaltwin-functions",
+  "description": "Authenticated proxies for Presnt (Gemini LLM; keep API keys off clients).",
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "lint": "node --check index.js",
+    "serve": "firebase emulators:start --only functions"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.3.0"
+  }
+}

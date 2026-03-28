@@ -133,7 +133,29 @@ class FamilyMemberTile extends StatelessWidget {
                   ],
                 ),
                 IconButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    showModalBottomSheet<void>(
+                      context: context,
+                      backgroundColor: PresntTokens.surfaceContainerHigh,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                      ),
+                      builder: (ctx) => Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(member.name, style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 8),
+                            Text(member.relationship, style: GoogleFonts.manrope(color: PresntTokens.onSurfaceVariant)),
+                            const SizedBox(height: 12),
+                            Text(_tierLabel(), style: GoogleFonts.manrope(fontWeight: FontWeight.w600, color: _tierColor())),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                   icon: Icon(Icons.more_vert_rounded, color: PresntTokens.outlineVariant.withValues(alpha: 0.8)),
                 ),
               ],

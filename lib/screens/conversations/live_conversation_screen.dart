@@ -1,12 +1,25 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'dart:async';
+import '../../config/app_config.dart';
+import '../../routes/route_names.dart';
 import '../../providers/avatar_provider.dart';
 import '../../providers/approval_provider.dart';
+import '../../providers/session_provider.dart';
+import '../../services/heygen_service.dart';
+import '../../services/liveavatar_service.dart';
+import '../../services/elevenlabs_service.dart';
+import '../../services/did_service.dart';
+import '../../models/heygen_streaming_session.dart';
+import '../../widgets/heygen_livekit_video.dart';
+import '../../widgets/did_webrtc_video.dart';
+import '../../providers/streaming_settings_provider.dart';
 import '../../theme/presnt_tokens.dart';
 import '../../widgets/avatar_preview_display.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -22,6 +35,8 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _pulse;
   final FlutterTts _flutterTts = FlutterTts();
+  final ElevenLabsService _elevenLabs = ElevenLabsService();
+  final AudioPlayer _audioPlayer = AudioPlayer();
   final TextEditingController _msgController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
@@ -31,6 +46,21 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
   Duration _elapsed = Duration.zero;
   Timer? _durationTimer;
   bool _showApprovalBanner = false;
+  final HeyGenService _heyGenService = HeyGenService();
+  final LiveAvatarService _liveAvatarService = LiveAvatarService();
+  final DidService _didService = DidService();
+  final GlobalKey<DidWebrtcVideoState> _didVideoKey = GlobalKey<DidWebrtcVideoState>();
+  
+  /// Active Streaming Engine (default matches [StreamingEngineNotifier]).
+  StreamingEngine _activeEngine = StreamingEngine.dId;
+  
+  /// HeyGen / LiveAvatar Session Status
+  bool _heyGenConnected = false;
+  bool _heyGenTaskLipSync = false;
+  HeyGenStreamingSession? _heyGenSession;
+  
+  final bool _isListening = false;
+  String? _clonedVoiceId;
 
   @override
   void initState() {
@@ -39,11 +69,79 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
     _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_sessionActive && mounted) setState(() => _elapsed += const Duration(seconds: 1));
     });
+    _initSession();
+  }
+
+  Future<void> _initSession() async {
+    final avatar = ref.read(avatarProvider);
+    final avatarId = avatar?.avatarId ?? '';
+    _clonedVoiceId = avatar?.voiceId;
+    await ref.read(currentSessionProvider.notifier).startSession(avatarId, 'Participant');
     _initTts();
+    _initAvatarVideo();
+  }
+
+  void _toggleListening() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Voice input requires launching from Xcode (known Flutter macOS limitation). Use text input for now.')),
+    );
+  }
+
+  Future<void> _initAvatarVideo() async {
+    _activeEngine = ref.read(streamingEngineProvider);
+
+    if (_activeEngine == StreamingEngine.dId) {
+      if (mounted) {
+        setState(() {
+          // The D-ID WebRTC widget automatically connects on mount
+          _heyGenConnected = false;
+          _heyGenTaskLipSync = false;
+        });
+      }
+      return;
+    }
+
+    if (_activeEngine == StreamingEngine.liveAvatar) {
+      final session = await _liveAvatarService.createLiteSession();
+      if (session != null && mounted) {
+        setState(() {
+          _heyGenSession = session;
+          _heyGenConnected = true;
+          _heyGenTaskLipSync = false;
+        });
+        return;
+      }
+      if (mounted) {
+        setState(() => _heyGenTaskLipSync = false);
+      }
+      return;
+    }
+
+    // HeyGen fallback
+    final avatar = ref.read(avatarProvider);
+    final voiceId = avatar?.voiceId;
+    final streamingAvatarOverride = AppConfig.heygenUseStoredFaceForStreaming ? avatar?.faceId : null;
+    final session = await _heyGenService.createStreamingSession(
+      avatarId: streamingAvatarOverride,
+      voiceId: voiceId,
+    );
+    if (session != null && mounted) {
+      setState(() {
+        _heyGenSession = session;
+        _heyGenConnected = true;
+        _heyGenTaskLipSync = true;
+      });
+      final aid = AppConfig.heygenStreamingAvatarId.trim();
+      debugPrint('HeyGen streaming (avatar=${streamingAvatarOverride ?? (aid.isEmpty ? "heygen_default" : aid)}, voice=${voiceId ?? "default"}).');
+    } else if (mounted) {
+      setState(() => _heyGenTaskLipSync = false);
+    }
   }
 
   Future<void> _initTts() async {
-    await _flutterTts.setSharedInstance(true);
+    if (Platform.isIOS) {
+      await _flutterTts.setSharedInstance(true);
+    }
     await Future.delayed(const Duration(milliseconds: 600));
     _addMessage('Hello. I am your Presnt avatar. How can I help today?', isAvatar: true);
   }
@@ -61,7 +159,71 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
         );
       }
     });
-    if (isAvatar) _flutterTts.speak(text);
+    if (isAvatar) {
+      _speakAsAvatar(text);
+    }
+    ref.read(currentSessionProvider.notifier).addTranscriptEntry({
+      'text': text,
+      'isAvatar': isAvatar,
+      'time': DateTime.now().toIso8601String(),
+    });
+  }
+
+  /// Speaks avatar text using the best available voice source.
+  /// HeyGen: streaming task (server audio). LiveAvatar LITE: local ElevenLabs/TTS (WebSocket lip-sync not wired yet).
+  /// D-ID: sends full text script to stream for generation.
+  Future<void> _speakAsAvatar(String text) async {
+    if (_activeEngine == StreamingEngine.dId) {
+      await _didVideoKey.currentState?.speak(text);
+      return;
+    }
+
+    if (_heyGenConnected && _heyGenTaskLipSync) {
+      _heyGenService.sendTaskToAvatar(text);
+      return;
+    }
+
+    // Try ElevenLabs with the user's cloned voice
+    if (_clonedVoiceId != null && _clonedVoiceId!.isNotEmpty) {
+      try {
+        final audioPath = await _elevenLabs.generateSpeech(text, voiceId: _clonedVoiceId);
+        if (audioPath.isNotEmpty) {
+          await _audioPlayer.play(DeviceFileSource(audioPath));
+          return;
+        }
+      } catch (e) {
+        debugPrint('ElevenLabs TTS playback failed, falling back to system TTS: $e');
+      }
+    }
+
+    // Fallback: system TTS
+    _flutterTts.speak(text);
+  }
+
+  String _streamingDebugMessage() {
+    if (_activeEngine == StreamingEngine.dId) {
+      if (_didVideoKey.currentState?.isStreamReady ?? false) {
+        return 'D-ID video stream is active.';
+      }
+      final hint = _didVideoKey.currentState?.statusHint ?? 'Starting…';
+      final looksLikeError =
+          hint.contains('Failed') || hint.contains('Invalid') || hint.contains('Error');
+      if (looksLikeError) {
+        return 'D-ID: $hint — verify DID_API_KEY (email:password from Studio) and DID_SOURCE_URL in .env; full restart after edits. Check debug console for HTTP lines.';
+      }
+      if (hint == 'Connecting...') {
+        return 'D-ID: connecting… (wait a few seconds). If this never clears, check .env and run the app from the project folder so .env loads.';
+      }
+      return 'D-ID: $hint';
+    }
+    if (_activeEngine == StreamingEngine.liveAvatar) {
+      if (_heyGenConnected) return 'LiveAvatar video stream is active.';
+      return _liveAvatarService.lastError ??
+          'LiveAvatar did not connect. Set LIVEAVATAR_API_KEY and LIVEAVATAR_AVATAR_ID in .env.';
+    }
+    if (_heyGenConnected) return 'HeyGen video stream is active.';
+    return _heyGenService.lastStreamingSessionError ??
+        'HeyGen did not connect. Check HEYGEN_API_KEY and terminal logs.';
   }
 
   Future<void> _sendMessage() async {
@@ -96,20 +258,37 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
     return '$m:$s';
   }
 
-  void _endSession() {
-    setState(() => _sessionActive = false);
+  Future<void> _endSession() async {
+    setState(() {
+      _sessionActive = false;
+      _heyGenSession = null;
+      _heyGenConnected = false;
+    });
     _durationTimer?.cancel();
     _flutterTts.stop();
+    if (_activeEngine == StreamingEngine.liveAvatar) {
+      await _liveAvatarService.stopSession();
+    } else if (_activeEngine == StreamingEngine.heyGen) {
+      await _heyGenService.closeSession();
+    }
+    await ref.read(currentSessionProvider.notifier).endSession();
+    ref.read(sessionsListProvider.notifier).refresh();
     if (mounted) context.pop();
   }
 
   @override
   void dispose() {
     _flutterTts.stop();
+    _audioPlayer.dispose();
     _pulse.dispose();
     _msgController.dispose();
     _scrollController.dispose();
     _durationTimer?.cancel();
+    if (_activeEngine == StreamingEngine.liveAvatar) {
+      _liveAvatarService.stopSession();
+    } else if (_activeEngine == StreamingEngine.heyGen) {
+      _heyGenService.closeSession();
+    }
     super.dispose();
   }
 
@@ -121,24 +300,46 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Positioned.fill(
-            child: AvatarPreviewDisplay(
-              imagePath: previewPath,
-              fit: BoxFit.cover,
-              alignment: Alignment.center,
-              placeholder: Container(color: Colors.black),
+          if (_activeEngine == StreamingEngine.dId)
+            Positioned.fill(
+              child: DidWebrtcVideo(
+                key: _didVideoKey,
+                didService: _didService,
+                fillScreen: true,
+              ),
+            )
+          else if (_heyGenSession != null)
+            Positioned.fill(
+              child: HeyGenLiveKitVideo(
+                key: ValueKey(_heyGenSession!.sessionId),
+                url: _heyGenSession!.liveKitUrl,
+                token: _heyGenSession!.accessToken,
+                fillScreen: true,
+              ),
+            )
+          else
+            Positioned.fill(
+              child: AvatarPreviewDisplay(
+                imagePath: previewPath,
+                fit: BoxFit.cover,
+                alignment: Alignment.center,
+                placeholder: Container(color: Colors.black),
+              ),
             ),
-          ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: [
-                  Colors.black.withValues(alpha: 0.92),
-                  Colors.black.withValues(alpha: 0.35),
-                  Colors.black.withValues(alpha: 0.65),
-                ],
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.92),
+                      Colors.black.withValues(alpha: 0.35),
+                      Colors.black.withValues(alpha: 0.65),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -237,7 +438,7 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
                           ),
                           const SizedBox(width: 8),
                           IconButton(
-                            onPressed: () {},
+                            onPressed: () => context.pushNamed(RouteNames.settings),
                             style: IconButton.styleFrom(
                               backgroundColor: Colors.black.withValues(alpha: 0.25),
                             ),
@@ -250,40 +451,42 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
                 ),
 
                 Expanded(
-                  child: Center(
-                    child: AnimatedBuilder(
-                      animation: _pulse,
-                      builder: (context, _) {
-                        final v = _pulse.value;
-                        return SizedBox(
-                          width: 140,
-                          height: 140,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              Container(
-                                width: 120 + v * 24,
-                                height: 120 + v * 24,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: PresntTokens.primary.withValues(alpha: 0.22)),
+                  child: (_heyGenSession != null || _activeEngine == StreamingEngine.dId)
+                      ? const SizedBox.shrink()
+                      : Center(
+                          child: AnimatedBuilder(
+                            animation: _pulse,
+                            builder: (context, _) {
+                              final v = _pulse.value;
+                              return SizedBox(
+                                width: 140,
+                                height: 140,
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    Container(
+                                      width: 120 + v * 24,
+                                      height: 120 + v * 24,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: PresntTokens.primary.withValues(alpha: 0.22)),
+                                      ),
+                                    ),
+                                    Container(
+                                      width: 100 + v * 18,
+                                      height: 100 + v * 18,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: PresntTokens.secondary.withValues(alpha: 0.2)),
+                                      ),
+                                    ),
+                                    const Icon(Icons.graphic_eq_rounded, color: Colors.white24, size: 48),
+                                  ],
                                 ),
-                              ),
-                              Container(
-                                width: 100 + v * 18,
-                                height: 100 + v * 18,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: PresntTokens.secondary.withValues(alpha: 0.2)),
-                                ),
-                              ),
-                              const Icon(Icons.graphic_eq_rounded, color: Colors.white24, size: 48),
-                            ],
+                              );
+                            },
                           ),
-                        );
-                      },
-                    ),
-                  ),
+                        ),
                 ),
 
                 if (_showApprovalBanner)
@@ -517,16 +720,28 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
                             const SizedBox(width: 8),
                             IconButton(
                               style: IconButton.styleFrom(
-                                backgroundColor: Colors.white.withValues(alpha: 0.06),
+                                backgroundColor: _isListening
+                                    ? PresntTokens.primary.withValues(alpha: 0.3)
+                                    : Colors.white.withValues(alpha: 0.06),
                               ),
-                              onPressed: () {},
-                              icon: const Icon(Icons.mic_none_rounded, color: Colors.white70),
+                              onPressed: _toggleListening,
+                              icon: Icon(
+                                _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                                color: _isListening ? PresntTokens.primary : Colors.white70,
+                              ),
                             ),
                             IconButton(
                               style: IconButton.styleFrom(
                                 backgroundColor: Colors.white.withValues(alpha: 0.06),
                               ),
-                              onPressed: () {},
+                              onPressed: () {
+                                // SnackBars do not appear in the terminal; mirror for logs.
+                                final msg = _streamingDebugMessage();
+                                debugPrint('[LiveSession] Video status (same as snackbar): $msg');
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(msg)),
+                                );
+                              },
                               icon: const Icon(Icons.videocam_outlined, color: Colors.white70),
                             ),
                             const SizedBox(width: 4),

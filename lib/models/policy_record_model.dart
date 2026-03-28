@@ -21,20 +21,40 @@ class PolicyRecord {
     required this.overrideHistory,
   });
 
-  /// Returns the user override tier if set, otherwise the default tier.
   int get effectiveTier => userOverrideTier ?? defaultTier;
 
-  PolicyRecord copyWith({int? userOverrideTier}) {
-    return PolicyRecord(
-      recordId: recordId,
-      accountId: accountId,
-      actionType: actionType,
-      defaultTier: defaultTier,
-      userOverrideTier: userOverrideTier ?? this.userOverrideTier,
-      domainOverrideTier: domainOverrideTier,
-      permanentlyBlocked: permanentlyBlocked,
-      timeoutSeconds: timeoutSeconds,
-      overrideHistory: overrideHistory,
-    );
-  }
+  PolicyRecord copyWith({int? userOverrideTier}) => PolicyRecord(
+        recordId: recordId,
+        accountId: accountId,
+        actionType: actionType,
+        defaultTier: defaultTier,
+        userOverrideTier: userOverrideTier ?? this.userOverrideTier,
+        domainOverrideTier: domainOverrideTier,
+        permanentlyBlocked: permanentlyBlocked,
+        timeoutSeconds: timeoutSeconds,
+        overrideHistory: overrideHistory,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'accountId': accountId,
+        'actionType': actionType,
+        'defaultTier': defaultTier,
+        'userOverrideTier': userOverrideTier,
+        'domainOverrideTier': domainOverrideTier,
+        'permanentlyBlocked': permanentlyBlocked,
+        'timeoutSeconds': timeoutSeconds,
+        'overrideHistory': overrideHistory,
+      };
+
+  factory PolicyRecord.fromMap(String id, Map<String, dynamic> d) => PolicyRecord(
+        recordId: id,
+        accountId: (d['accountId'] as String?) ?? '',
+        actionType: (d['actionType'] as String?) ?? '',
+        defaultTier: (d['defaultTier'] as num?)?.toInt() ?? 2,
+        userOverrideTier: (d['userOverrideTier'] as num?)?.toInt(),
+        domainOverrideTier: (d['domainOverrideTier'] as num?)?.toInt(),
+        permanentlyBlocked: (d['permanentlyBlocked'] as bool?) ?? false,
+        timeoutSeconds: (d['timeoutSeconds'] as num?)?.toInt() ?? 300,
+        overrideHistory: List<String>.from(d['overrideHistory'] ?? []),
+      );
 }

@@ -7,6 +7,7 @@ import '../../routes/route_names.dart';
 import '../../theme/presnt_tokens.dart';
 import '../../widgets/family_member_tile.dart';
 import '../../models/family_member_model.dart';
+import '../../providers/approval_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../providers/auth_provider.dart';
 
@@ -124,11 +125,22 @@ class _FamilyMembersScreenState extends ConsumerState<FamilyMembersScreen> {
                         ),
                       ),
                       IconButton(
-                        onPressed: () {},
+                        onPressed: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Search family members — coming soon.')),
+                          );
+                        },
                         icon: const Icon(Icons.search_rounded, color: Colors.white70),
                       ),
                       IconButton(
-                        onPressed: () {},
+                        onPressed: () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          final biometric = ref.read(biometricServiceProvider);
+                          final ok = await biometric.authenticate('Verify your identity');
+                          messenger.showSnackBar(
+                            SnackBar(content: Text(ok ? 'Identity verified.' : 'Verification failed.')),
+                          );
+                        },
                         icon: const Icon(Icons.fingerprint_rounded, color: PresntTokens.primary),
                       ),
                     ],

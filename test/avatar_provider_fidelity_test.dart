@@ -5,6 +5,7 @@ import 'package:ai_digital_twin/providers/avatar_provider.dart';
 import 'package:ai_digital_twin/services/behavioral_llm.dart';
 import 'package:ai_digital_twin/services/elevenlabs_service.dart';
 import 'package:ai_digital_twin/services/firebase_service.dart';
+import 'package:ai_digital_twin/core/providers/service_providers.dart';
 import 'package:ai_digital_twin/services/heygen_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,12 +20,12 @@ class _FakeBehavioralLlm implements BehavioralLlm {
 
 class _FakeHeyGenService extends HeyGenService {
   @override
-  Future<String> trainFaceModel(List<String> imagePaths) async => 'face_1';
+  Future<String?> createPhotoAvatar(List<String> imagePaths, {String name = 'Presnt Avatar'}) async => 'face_1';
 }
 
 class _FakeElevenLabsService extends ElevenLabsService {
   @override
-  Future<String> cloneVoice(String audioFilePath) async => 'voice_1';
+  Future<String> cloneVoice(String audioFilePath, {String name = 'Presnt Clone'}) async => 'voice_1';
 }
 
 class _FakeFirebaseService extends FirebaseService {
@@ -63,7 +64,7 @@ void main() {
         behavioralLlmProvider.overrideWithValue(_FakeBehavioralLlm()),
         heygenProvider.overrideWithValue(_FakeHeyGenService()),
         elevenlabsProvider.overrideWithValue(_FakeElevenLabsService()),
-        avatarFirebaseServiceProvider.overrideWithValue(fakeFirebase),
+        firebaseServiceProvider.overrideWithValue(fakeFirebase),
       ],
     );
     addTearDown(container.dispose);
@@ -87,7 +88,7 @@ void main() {
         behavioralLlmProvider.overrideWithValue(_FakeBehavioralLlm()),
         heygenProvider.overrideWithValue(_FakeHeyGenService()),
         elevenlabsProvider.overrideWithValue(_FakeElevenLabsService()),
-        avatarFirebaseServiceProvider.overrideWithValue(fakeFirebase),
+        firebaseServiceProvider.overrideWithValue(fakeFirebase),
       ],
     );
     addTearDown(container.dispose);

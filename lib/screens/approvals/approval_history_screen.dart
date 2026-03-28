@@ -1,40 +1,34 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_colors.dart';
+import '../../providers/approval_provider.dart';
+import '../../models/approval_token_model.dart';
 
-class _HistoryItem {
-  final String requester;
-  final String credentialType;
-  final String outcome; // approved | denied | expired
-  final DateTime timestamp;
-
-  const _HistoryItem({
-    required this.requester,
-    required this.credentialType,
-    required this.outcome,
-    required this.timestamp,
-  });
-}
-
-class ApprovalHistoryScreen extends StatefulWidget {
+class ApprovalHistoryScreen extends ConsumerStatefulWidget {
   const ApprovalHistoryScreen({super.key});
 
   @override
-  State<ApprovalHistoryScreen> createState() => _ApprovalHistoryScreenState();
+  ConsumerState<ApprovalHistoryScreen> createState() => _ApprovalHistoryScreenState();
 }
 
-class _ApprovalHistoryScreenState extends State<ApprovalHistoryScreen> {
+class _ApprovalHistoryScreenState extends ConsumerState<ApprovalHistoryScreen> {
   String _filter = 'All';
 
-  final List<_HistoryItem> _history = [];
-
-  List<_HistoryItem> get _filtered {
-    if (_filter == 'All') return _history;
-    return _history.where((h) => h.outcome == _filter.toLowerCase()).toList();
+  String _outcome(AuthorizationToken t) {
+    if (t.used) return 'approved';
+    if (t.invalidated) return 'denied';
+    if (t.expiresAt.isBefore(DateTime.now())) return 'expired';
+    return 'pending';
   }
 
   @override
   Widget build(BuildContext context) {
-    final items = _filtered;
+    final all = ref.watch(pendingApprovalsProvider);
+    final resolved = all.where((t) => t.used || t.invalidated || t.expiresAt.isBefore(DateTime.now())).toList();
+
+    final items = _filter == 'All'
+        ? resolved
+        : resolved.where((t) => _outcome(t) == _filter.toLowerCase()).toList();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Approval History')),
@@ -67,7 +61,7 @@ class _ApprovalHistoryScreenState extends State<ApprovalHistoryScreen> {
                     child: Padding(
                       padding: EdgeInsets.all(24),
                       child: Text(
-                        'No approval history yet. Completed approvals will appear here once the backend is connected.',
+                        'No approval history yet. Completed approvals will appear here.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: AppColors.textSecondary, height: 1.4),
                       ),
@@ -77,21 +71,22 @@ class _ApprovalHistoryScreenState extends State<ApprovalHistoryScreen> {
                     itemCount: items.length,
                     separatorBuilder: (_, _) => const Divider(height: 1),
                     itemBuilder: (_, i) {
-                      final item = items[i];
+                      final token = items[i];
+                      final outcome = _outcome(token);
                       return ListTile(
-                        leading: _outcomeIcon(item.outcome),
-                        title: Text(item.requester),
-                        subtitle: Text('${item.credentialType} • ${_formatTime(item.timestamp)}'),
+                        leading: _outcomeIcon(outcome),
+                        title: Text(token.credentialType),
+                        subtitle: Text('Session: ${token.sessionId.substring(0, 8)}… · ${_formatTime(token.issuedAt)}'),
                         trailing: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: _outcomeColor(item.outcome).withValues(alpha: 0.12),
+                            color: _outcomeColor(outcome).withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
-                            item.outcome[0].toUpperCase() + item.outcome.substring(1),
+                            outcome[0].toUpperCase() + outcome.substring(1),
                             style: TextStyle(
-                              color: _outcomeColor(item.outcome),
+                              color: _outcomeColor(outcome),
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                             ),
@@ -131,9 +126,12 @@ class _ApprovalHistoryScreenState extends State<ApprovalHistoryScreen> {
 
   Color _outcomeColor(String outcome) {
     switch (outcome) {
-      case 'approved': return AppColors.statusActive;
-      case 'denied': return AppColors.danger;
-      default: return AppColors.statusSleeping;
+      case 'approved':
+        return AppColors.statusActive;
+      case 'denied':
+        return AppColors.danger;
+      default:
+        return AppColors.statusSleeping;
     }
   }
 

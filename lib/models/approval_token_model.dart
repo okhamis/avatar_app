@@ -22,4 +22,29 @@ class AuthorizationToken {
     required this.invalidated,
     required this.biometricRef,
   });
+
+  Map<String, dynamic> toMap() => {
+        'accountId': accountId,
+        'sessionId': sessionId,
+        'credentialType': credentialType,
+        'issuedAt': issuedAt.toIso8601String(),
+        'expiresAt': expiresAt.toIso8601String(),
+        'timeoutSeconds': timeoutSeconds,
+        'used': used,
+        'invalidated': invalidated,
+        'biometricRef': biometricRef,
+      };
+
+  factory AuthorizationToken.fromMap(String id, Map<String, dynamic> d) => AuthorizationToken(
+        tokenId: id,
+        accountId: (d['accountId'] as String?) ?? '',
+        sessionId: (d['sessionId'] as String?) ?? '',
+        credentialType: (d['credentialType'] as String?) ?? '',
+        issuedAt: DateTime.tryParse(d['issuedAt'] as String? ?? '') ?? DateTime.now(),
+        expiresAt: DateTime.tryParse(d['expiresAt'] as String? ?? '') ?? DateTime.now(),
+        timeoutSeconds: (d['timeoutSeconds'] as num?)?.toInt() ?? 300,
+        used: (d['used'] as bool?) ?? false,
+        invalidated: (d['invalidated'] as bool?) ?? false,
+        biometricRef: (d['biometricRef'] as String?) ?? '',
+      );
 }

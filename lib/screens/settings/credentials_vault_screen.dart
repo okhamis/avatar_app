@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/credential_tile.dart';
 import '../../models/credential_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/approval_provider.dart';
 
@@ -57,11 +58,12 @@ class _CredentialsVaultScreenState extends ConsumerState<CredentialsVaultScreen>
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () {
-              if (typeCtrl.text.trim().isNotEmpty) {
+              final accountId = ref.read(authProvider)?.uid ?? '';
+              if (typeCtrl.text.trim().isNotEmpty && accountId.isNotEmpty) {
                 final now = DateTime.now();
                 ref.read(credentialsVaultProvider.notifier).addCredential(CredentialModel(
                   credentialId: 'c_${now.millisecondsSinceEpoch}',
-                  accountId: 'acc_1',
+                  accountId: accountId,
                   credentialType: typeCtrl.text.trim(),
                   maskedPreview: maskedCtrl.text.trim().isEmpty ? '****' : maskedCtrl.text.trim(),
                   encryptedReference: 'enc_ref_${now.millisecondsSinceEpoch}',

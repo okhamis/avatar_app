@@ -3,8 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import '../services/firebase_service.dart';
-
-final firebaseServiceProvider = Provider((ref) => FirebaseService());
+import '../core/providers/service_providers.dart';
 
 final authProvider = NotifierProvider<AuthNotifier, UserModel?>(AuthNotifier.new);
 
@@ -75,30 +74,17 @@ class AuthNotifier extends Notifier<UserModel?> {
         }
         return;
       }
-      if (!kDebugMode) {
-        throw Exception('Login failed. Please try again.');
-      }
+      throw Exception('Login failed. Please try again.');
     } on FirebaseAuthException catch (e) {
       debugPrint('Login FirebaseAuthException [${e.code}]: ${e.message}');
-      if (!kDebugMode) {
-        throw Exception(_friendlyAuthMessage(e));
-      }
+      throw Exception(_friendlyAuthMessage(e));
     } on FirebaseException catch (e) {
       debugPrint('Login FirebaseException [${e.code}]: ${e.message}');
-      if (!kDebugMode) {
-        throw Exception(_friendlyFirebaseMessage(e));
-      }
+      throw Exception(_friendlyFirebaseMessage(e));
     } catch (e) {
       debugPrint('Login unexpected error [${e.runtimeType}]: $e');
-      if (!kDebugMode) {
-        throw Exception('Login failed. Please try again.');
-      }
+      throw Exception('Login failed. Please try again.');
     }
-    if (kDebugMode) {
-      state = UserModel(uid: 'mock_uid', email: email, fullName: 'Demo User');
-      return;
-    }
-    throw Exception('Login failed. Please try again.');
   }
 
   Future<void> loginWithGoogle() async {
@@ -117,20 +103,17 @@ class AuthNotifier extends Notifier<UserModel?> {
           pendingProviderId: GoogleAuthProvider.PROVIDER_ID,
         );
       }
-      if (kDebugMode && e.code == 'no-app') {
-        state = UserModel(uid: 'mock_google_uid', email: 'google.debug@example.com', fullName: 'Google Demo User');
-        return;
-      }
       throw Exception(_friendlyAuthMessage(e));
     } on FirebaseException catch (e) {
       debugPrint('Google login FirebaseException [${e.code}]: ${e.message}');
-      if (kDebugMode && e.code == 'no-app') {
-        state = UserModel(uid: 'mock_google_uid', email: 'google.debug@example.com', fullName: 'Google Demo User');
-        return;
-      }
       throw Exception(_friendlyFirebaseMessage(e));
     } catch (e) {
       debugPrint('Google login unexpected error [${e.runtimeType}]: $e');
+      if (e.toString().contains('GIDClientID')) {
+        throw Exception(
+          'Google Sign-In is not configured for macOS. Add CLIENT_ID/REVERSED_CLIENT_ID to macOS GoogleService-Info.plist and set GIDClientID in macOS Info.plist.',
+        );
+      }
       throw Exception('Google sign-in failed. Please try again.');
     }
   }
@@ -151,17 +134,9 @@ class AuthNotifier extends Notifier<UserModel?> {
           pendingProviderId: FacebookAuthProvider.PROVIDER_ID,
         );
       }
-      if (kDebugMode && e.code == 'no-app') {
-        state = UserModel(uid: 'mock_facebook_uid', email: 'facebook.debug@example.com', fullName: 'Facebook Demo User');
-        return;
-      }
       throw Exception(_friendlyAuthMessage(e));
     } on FirebaseException catch (e) {
       debugPrint('Facebook login FirebaseException [${e.code}]: ${e.message}');
-      if (kDebugMode && e.code == 'no-app') {
-        state = UserModel(uid: 'mock_facebook_uid', email: 'facebook.debug@example.com', fullName: 'Facebook Demo User');
-        return;
-      }
       throw Exception(_friendlyFirebaseMessage(e));
     } catch (e) {
       debugPrint('Facebook login unexpected error [${e.runtimeType}]: $e');
@@ -226,39 +201,12 @@ class AuthNotifier extends Notifier<UserModel?> {
       debugPrint('[AUTH] createAccount SUCCESS, state set');
     } on FirebaseAuthException catch (e) {
       debugPrint('[AUTH] FirebaseAuthException [${e.code}]: ${e.message}');
-      if (kDebugMode) {
-        debugPrint('[AUTH] Debug mode: creating mock user and returning');
-        state = UserModel(
-          uid: 'mock_${DateTime.now().millisecondsSinceEpoch}',
-          email: email,
-          fullName: fullName,
-        );
-        return;
-      }
       throw Exception(_friendlyAuthMessage(e));
     } on FirebaseException catch (e) {
       debugPrint('[AUTH] FirebaseException [${e.code}]: ${e.message}');
-      if (kDebugMode) {
-        debugPrint('[AUTH] Debug mode: creating mock user and returning');
-        state = UserModel(
-          uid: 'mock_${DateTime.now().millisecondsSinceEpoch}',
-          email: email,
-          fullName: fullName,
-        );
-        return;
-      }
       throw Exception(_friendlyFirebaseMessage(e));
     } catch (e) {
       debugPrint('[AUTH] Unexpected error [${e.runtimeType}]: $e');
-      if (kDebugMode) {
-        debugPrint('[AUTH] Debug mode: creating mock user and returning');
-        state = UserModel(
-          uid: 'mock_${DateTime.now().millisecondsSinceEpoch}',
-          email: email,
-          fullName: fullName,
-        );
-        return;
-      }
       throw Exception('Account creation failed. Please try again.');
     }
   }

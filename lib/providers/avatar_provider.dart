@@ -10,16 +10,25 @@ import '../services/behavioral_llm.dart';
 import '../services/claude_service.dart';
 import '../services/elevenlabs_service.dart';
 import '../services/firebase_service.dart';
+import '../services/backend_behavioral_llm_service.dart';
 import '../services/gemini_service.dart';
 import '../services/heygen_service.dart';
+import '../core/providers/service_providers.dart';
 
 final heygenProvider = Provider((ref) => HeyGenService());
 final elevenlabsProvider = Provider((ref) => ElevenLabsService());
-final avatarFirebaseServiceProvider = Provider((ref) => FirebaseService());
 
 /// Use **Gemini** or **Claude** for live avatar replies. Set in `.env`:
 /// `BEHAVIOR_LLM=gemini` (default) or `BEHAVIOR_LLM=claude`.
+///
+/// When [AppConfig.useBackendBehaviorLlm] is true, replies go through the `behavioralChat` Cloud Function (Gemini on the server).
 final behavioralLlmProvider = Provider<BehavioralLlm>((ref) {
+  if (AppConfig.useBackendBehaviorLlm) {
+    if (AppConfig.behaviorLlm == 'claude' && kDebugMode) {
+      debugPrint('USE_BACKEND_LLM=true: server uses Gemini; BEHAVIOR_LLM=claude is ignored for live chat.');
+    }
+    return BackendBehavioralLlmService();
+  }
   String mode = 'gemini';
   try {
     mode = AppConfig.behaviorLlm;
@@ -45,7 +54,7 @@ class AvatarNotifier extends Notifier<AvatarModel?> {
     _heyGen = ref.watch(heygenProvider);
     _elevenLabs = ref.watch(elevenlabsProvider);
     _behavioralLlm = ref.watch(behavioralLlmProvider);
-    _firebaseService = ref.watch(avatarFirebaseServiceProvider);
+    _firebaseService = ref.watch(firebaseServiceProvider);
     return null;
   }
 
@@ -77,10 +86,27 @@ class AvatarNotifier extends Notifier<AvatarModel?> {
       lastErrorMessage: null,
     );
     state = next;
+
+    // Upload photos to HeyGen and create a Photo Avatar (non-blocking).
+    // The resulting group_id is stored as faceId so streaming sessions
+    // render the user's own face.
+    String? heygenGroupId;
     try {
-      await _firebaseService.saveAvatarProfile(next);
+      heygenGroupId = await _heyGen.createPhotoAvatar(imagePaths, name: 'Presnt-$ownerId');
+      debugPrint('[avatar] HeyGen photo avatar group_id=$heygenGroupId');
+    } catch (e) {
+      debugPrint('[avatar] HeyGen photo avatar creation failed (non-fatal): $e');
+    }
+
+    final withFace = (state ?? next).copyWith(
+      faceId: heygenGroupId ?? next.faceId,
+    );
+    state = withFace;
+
+    try {
+      await _firebaseService.saveAvatarProfile(withFace);
       await _firebaseService.updateUserTrainingFlags(uid: ownerId, hasFaceTrained: imagePaths.isNotEmpty);
-      await _tryUploadPreviewToCloud(next, ownerId);
+      await _tryUploadPreviewToCloud(withFace, ownerId);
     } catch (e) {
       if (_isNoAppInDebug(e)) return;
       rethrow;
@@ -101,8 +127,25 @@ class AvatarNotifier extends Notifier<AvatarModel?> {
       lastErrorMessage: null,
     );
     state = next;
+
+    // Clone the voice via ElevenLabs (non-blocking on failure).
+    String clonedVoiceId = '';
+    if (samplePath.isNotEmpty) {
+      try {
+        clonedVoiceId = await _elevenLabs.cloneVoice(samplePath, name: 'Presnt-$ownerId');
+        debugPrint('[avatar] ElevenLabs cloned voice_id=$clonedVoiceId');
+      } catch (e) {
+        debugPrint('[avatar] ElevenLabs voice clone failed (non-fatal): $e');
+      }
+    }
+
+    final withVoice = (state ?? next).copyWith(
+      voiceId: clonedVoiceId.isNotEmpty ? clonedVoiceId : next.voiceId,
+    );
+    state = withVoice;
+
     try {
-      await _firebaseService.saveAvatarProfile(next);
+      await _firebaseService.saveAvatarProfile(withVoice);
       await _firebaseService.updateUserTrainingFlags(uid: ownerId, hasVoiceCloned: samplePath.isNotEmpty);
     } catch (e) {
       if (_isNoAppInDebug(e)) return;
@@ -162,7 +205,7 @@ class AvatarNotifier extends Notifier<AvatarModel?> {
     state = current.copyWith(status: AvatarStatus.training, lastUpdated: now);
 
     try {
-      final faceId = await _heyGen.trainFaceModel(faceImagePaths);
+      final faceId = await _heyGen.createPhotoAvatar(faceImagePaths, name: 'Presnt-$ownerId') ?? '';
       try {
         await _firebaseService.updateUserTrainingFlags(uid: ownerId, hasFaceTrained: true);
       } catch (e) {

@@ -1,55 +1,46 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../routes/route_names.dart';
 import '../../theme/app_colors.dart';
+import '../../providers/session_provider.dart';
+import '../../models/session_model.dart';
 
-class _ConvItem {
-  final String id;
-  final String contact;
-  final String subtitle;
-  final String tag;
-  final bool isLive;
-
-  const _ConvItem({
-    required this.id,
-    required this.contact,
-    required this.subtitle,
-    required this.tag,
-    required this.isLive,
-  });
-}
-
-class ConversationListScreen extends StatefulWidget {
+class ConversationListScreen extends ConsumerStatefulWidget {
   const ConversationListScreen({super.key});
 
   @override
-  State<ConversationListScreen> createState() => _ConversationListScreenState();
+  ConsumerState<ConversationListScreen> createState() => _ConversationListScreenState();
 }
 
-class _ConversationListScreenState extends State<ConversationListScreen> {
+class _ConversationListScreenState extends ConsumerState<ConversationListScreen> {
   String _filter = 'All';
 
-  final List<_ConvItem> _all = const [];
-
-  List<_ConvItem> get _filtered {
+  List<SessionModel> _filtered(List<SessionModel> all) {
     switch (_filter) {
-      case 'Active': return _all.where((c) => c.isLive).toList();
-      case 'Completed': return _all.where((c) => !c.isLive).toList();
-      default: return _all;
+      case 'Active':
+        return all.where((s) => s.isLive).toList();
+      case 'Completed':
+        return all.where((s) => !s.isLive).toList();
+      default:
+        return all;
     }
   }
 
-  Color _tagColor(String tag) {
-    switch (tag) {
-      case 'Active': return AppColors.statusActive;
-      case 'Pending Approval': return AppColors.statusBusy;
-      default: return AppColors.textSecondary;
-    }
+  Color _tagColor(bool isLive) =>
+      isLive ? AppColors.statusActive : AppColors.textSecondary;
+
+  String _formatTime(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
   }
 
   @override
   Widget build(BuildContext context) {
-    final items = _filtered;
+    final sessions = ref.watch(sessionsListProvider);
+    final items = _filtered(sessions);
 
     return Scaffold(
       appBar: AppBar(
@@ -84,7 +75,7 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
               child: Padding(
                 padding: EdgeInsets.all(24),
                 child: Text(
-                  'No conversations yet. Start a live session to create one, or connect a session store to list past calls.',
+                  'No conversations yet. Start a live session to create one.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.textSecondary, height: 1.4),
                 ),
@@ -94,25 +85,26 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
               itemCount: items.length,
               separatorBuilder: (_, _) => const Divider(height: 1, indent: 72),
               itemBuilder: (_, i) {
-                final item = items[i];
+                final session = items[i];
+                final tag = session.isLive ? 'Active' : 'Completed';
                 return ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                   leading: CircleAvatar(
-                    backgroundColor: item.isLive
+                    backgroundColor: session.isLive
                         ? AppColors.statusActive.withValues(alpha: 0.2)
                         : AppColors.surface,
                     child: Text(
-                      item.contact[0],
+                      session.targetContactName.isNotEmpty ? session.targetContactName[0] : '?',
                       style: TextStyle(
-                        color: item.isLive ? AppColors.statusActive : AppColors.textPrimary,
+                        color: session.isLive ? AppColors.statusActive : AppColors.textPrimary,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
                   title: Row(
                     children: [
-                      Text(item.contact, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      if (item.isLive) ...[
+                      Text(session.targetContactName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      if (session.isLive) ...[
                         const SizedBox(width: 8),
                         Container(
                           width: 7,
@@ -126,25 +118,25 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
                     ],
                   ),
                   subtitle: Text(
-                    item.subtitle,
+                    _formatTime(session.startTime),
                     style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
                   ),
                   trailing: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: _tagColor(item.tag).withValues(alpha: 0.12),
+                      color: _tagColor(session.isLive).withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      item.tag,
-                      style: TextStyle(color: _tagColor(item.tag), fontSize: 11, fontWeight: FontWeight.w600),
+                      tag,
+                      style: TextStyle(color: _tagColor(session.isLive), fontSize: 11, fontWeight: FontWeight.w600),
                     ),
                   ),
                   onTap: () {
-                    if (item.isLive) {
+                    if (session.isLive) {
                       context.pushNamed(RouteNames.liveConversation);
                     } else {
-                      context.pushNamed(RouteNames.transcriptDetail, pathParameters: {'id': item.id});
+                      context.pushNamed(RouteNames.transcriptDetail, pathParameters: {'id': session.sessionId});
                     }
                   },
                 );

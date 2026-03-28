@@ -79,7 +79,15 @@ class _PendingApprovalsScreenState extends ConsumerState<PendingApprovalsScreen>
                       clipBehavior: Clip.none,
                       children: [
                         IconButton(
-                          onPressed: () {},
+                          onPressed: () async {
+                            final biometric = ref.read(biometricServiceProvider);
+                            final ok = await biometric.authenticate('Verify your identity');
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(ok ? 'Identity verified.' : 'Verification failed.')),
+                              );
+                            }
+                          },
                           icon: const Icon(Icons.fingerprint_rounded, color: PresntTokens.primary, size: 28),
                         ),
                         if (approvals.isNotEmpty)

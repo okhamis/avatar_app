@@ -8,7 +8,12 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import '../config/app_config.dart';
+import '../models/approval_token_model.dart';
 import '../models/avatar_model.dart';
+import '../models/credential_model.dart';
+import '../models/family_member_model.dart';
+import '../models/policy_record_model.dart';
+import '../models/session_model.dart';
 import '../models/user_model.dart';
 
 class FirebaseService {
@@ -138,6 +143,142 @@ class FirebaseService {
     }
   }
 
+  // ———————————————————————— Sessions ————————————————————————
+
+  CollectionReference<Map<String, dynamic>> _sessionsCol(String accountId) =>
+      _firestore.collection(AppConfig.firestoreUsersCollection).doc(accountId).collection(AppConfig.firestoreSessionsCollection);
+
+  Future<void> saveSession(String accountId, SessionModel session) async {
+    try {
+      await _sessionsCol(accountId).doc(session.sessionId).set(session.toMap(), SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error saving session: $e');
+    }
+  }
+
+  Future<List<SessionModel>> getSessions(String accountId) async {
+    try {
+      final snap = await _sessionsCol(accountId).orderBy('startTime', descending: true).get();
+      return snap.docs.map((d) => SessionModel.fromMap(d.id, d.data())).toList();
+    } catch (e) {
+      debugPrint('Error loading sessions: $e');
+      return [];
+    }
+  }
+
+  Future<SessionModel?> getSession(String accountId, String sessionId) async {
+    try {
+      final doc = await _sessionsCol(accountId).doc(sessionId).get();
+      if (!doc.exists || doc.data() == null) return null;
+      return SessionModel.fromMap(doc.id, doc.data()!);
+    } catch (e) {
+      debugPrint('Error loading session: $e');
+      return null;
+    }
+  }
+
+  // ———————————————————————— Family ————————————————————————
+
+  CollectionReference<Map<String, dynamic>> _familyCol(String accountId) =>
+      _firestore.collection(AppConfig.firestoreUsersCollection).doc(accountId).collection(AppConfig.firestoreFamilyCollection);
+
+  Future<void> saveFamilyMember(String accountId, FamilyMember member) async {
+    try {
+      await _familyCol(accountId).doc(member.memberId).set(member.toMap(), SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error saving family member: $e');
+    }
+  }
+
+  Future<List<FamilyMember>> getFamilyMembers(String accountId) async {
+    try {
+      final snap = await _familyCol(accountId).get();
+      return snap.docs.map((d) => FamilyMember.fromMap(d.id, d.data())).toList();
+    } catch (e) {
+      debugPrint('Error loading family members: $e');
+      return [];
+    }
+  }
+
+  // ———————————————————————— Credentials ————————————————————————
+
+  CollectionReference<Map<String, dynamic>> _credentialsCol(String accountId) =>
+      _firestore.collection(AppConfig.firestoreUsersCollection).doc(accountId).collection(AppConfig.firestoreCredentialsCollection);
+
+  Future<void> saveCredential(String accountId, CredentialModel cred) async {
+    try {
+      await _credentialsCol(accountId).doc(cred.credentialId).set(cred.toMap(), SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error saving credential: $e');
+    }
+  }
+
+  Future<void> deleteCredential(String accountId, String credentialId) async {
+    try {
+      await _credentialsCol(accountId).doc(credentialId).delete();
+    } catch (e) {
+      debugPrint('Error deleting credential: $e');
+    }
+  }
+
+  Future<List<CredentialModel>> getCredentials(String accountId) async {
+    try {
+      final snap = await _credentialsCol(accountId).get();
+      return snap.docs.map((d) => CredentialModel.fromMap(d.id, d.data())).toList();
+    } catch (e) {
+      debugPrint('Error loading credentials: $e');
+      return [];
+    }
+  }
+
+  // ———————————————————————— Policies ————————————————————————
+
+  CollectionReference<Map<String, dynamic>> _policiesCol(String accountId) =>
+      _firestore.collection(AppConfig.firestoreUsersCollection).doc(accountId).collection(AppConfig.firestorePoliciesCollection);
+
+  Future<void> savePolicy(String accountId, PolicyRecord policy) async {
+    try {
+      await _policiesCol(accountId).doc(policy.recordId).set(policy.toMap(), SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error saving policy: $e');
+    }
+  }
+
+  Future<List<PolicyRecord>> getPolicies(String accountId) async {
+    try {
+      final snap = await _policiesCol(accountId).get();
+      return snap.docs.map((d) => PolicyRecord.fromMap(d.id, d.data())).toList();
+    } catch (e) {
+      debugPrint('Error loading policies: $e');
+      return [];
+    }
+  }
+
+  // ———————————————————————— Approvals ————————————————————————
+
+  CollectionReference<Map<String, dynamic>> _approvalsCol(String accountId) =>
+      _firestore.collection(AppConfig.firestoreUsersCollection).doc(accountId).collection(AppConfig.firestoreApprovalsCollection);
+
+  Future<void> saveApproval(String accountId, AuthorizationToken token) async {
+    try {
+      await _approvalsCol(accountId).doc(token.tokenId).set(token.toMap(), SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error saving approval: $e');
+    }
+  }
+
+  Future<List<AuthorizationToken>> getApprovals(String accountId) async {
+    try {
+      final snap = await _approvalsCol(accountId).get();
+      return snap.docs.map((d) => AuthorizationToken.fromMap(d.id, d.data())).toList();
+    } catch (e) {
+      debugPrint('Error loading approvals: $e');
+      return [];
+    }
+  }
+
+  // ———————————————————————— Auth ————————————————————————
+
   Future<UserCredential> signInWithEmail(String email, String password) async {
     try {
       return await _auth.signInWithEmailAndPassword(email: email, password: password);
@@ -197,14 +338,29 @@ class FirebaseService {
   }
 
   Future<void> signOut() async {
+    Exception? lastError;
     try {
       await _auth.signOut();
-      await GoogleSignIn.instance.signOut();
-      await FacebookAuth.instance.logOut();
     } catch (e) {
       debugPrint("FirebaseAuth Logout Error: $e");
-      rethrow;
+      lastError = Exception("FirebaseAuth Logout Error: $e");
     }
+
+    try {
+      await GoogleSignIn.instance.signOut();
+    } catch (e) {
+      debugPrint("GoogleSignIn Logout Error: $e");
+      lastError ??= Exception("GoogleSignIn Logout Error: $e");
+    }
+
+    try {
+      await FacebookAuth.instance.logOut();
+    } catch (e) {
+      debugPrint("FacebookAuth Logout Error: $e");
+      lastError ??= Exception("FacebookAuth Logout Error: $e");
+    }
+
+    if (lastError != null) throw lastError;
   }
 
   Future<UserCredential> signInWithCredential(AuthCredential credential) async {

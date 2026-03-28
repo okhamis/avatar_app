@@ -52,9 +52,9 @@ class PresntGlassTopBar extends StatelessWidget implements PreferredSizeWidget {
                 Expanded(
                   child: Center(child: title ?? const SizedBox.shrink()),
                 ),
-                SizedBox(
-                  width: 120,
+                Flexible(
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: actionWidgets,
                   ),

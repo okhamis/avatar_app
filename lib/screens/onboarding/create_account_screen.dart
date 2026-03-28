@@ -286,7 +286,26 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                               ),
                             ],
                           ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 16),
+                        TextButton(
+                          onPressed: () => context.goNamed(RouteNames.signIn),
+                          child: Text.rich(
+                            TextSpan(
+                              style: GoogleFonts.inter(fontSize: 13, color: PresntTokens.outline),
+                              children: const [
+                                TextSpan(text: 'Already have an account? '),
+                                TextSpan(
+                                  text: 'Sign in',
+                                  style: TextStyle(
+                                    color: PresntTokens.primary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
                         Text.rich(
                           TextSpan(
                             style: GoogleFonts.inter(fontSize: 11, color: PresntTokens.outline, height: 1.4),

@@ -97,7 +97,7 @@ class _FaceUploadScreenState extends ConsumerState<FaceUploadScreen> {
         ),
         actions: [
           IconButton(
-            onPressed: () {},
+            onPressed: () => context.goNamed(RouteNames.settings),
             icon: const Icon(Icons.settings_outlined, color: PresntTokens.primary),
           ),
         ],

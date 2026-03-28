@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../providers/avatar_provider.dart';
 import '../../routes/route_names.dart';
 import '../../theme/presnt_tokens.dart';
+import '../../widgets/avatar_preview_display.dart';
 import '../../widgets/presnt/presnt_glass_bar.dart';
 import '../../widgets/presnt/presnt_buttons.dart';
 
@@ -16,7 +16,7 @@ class AvatarPreviewScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final avatar = ref.watch(avatarProvider);
-    final fidelityLabel = '${(((avatar?.fidelityScore ?? 0.984) * 100)).toStringAsFixed(1)}%';
+    final fidelityLabel = '${(((avatar?.fidelityScore ?? 0.0) * 100)).toStringAsFixed(1)}%';
     final livePreview = avatar?.previewImagePath;
     return Scaffold(
       backgroundColor: PresntTokens.background,
@@ -27,7 +27,15 @@ class AvatarPreviewScreen extends ConsumerWidget {
           radius: 18,
           backgroundColor: PresntTokens.surfaceContainerHigh,
           child: ClipOval(
-            child: _buildAvatar(livePreview, 36),
+            child: SizedBox(
+              width: 36,
+              height: 36,
+              child: AvatarPreviewDisplay(
+                imagePath: livePreview,
+                fit: BoxFit.cover,
+                placeholder: Icon(Icons.person_rounded, size: 22, color: PresntTokens.onSurfaceVariant),
+              ),
+            ),
           ),
         ),
         title: Text(
@@ -41,7 +49,7 @@ class AvatarPreviewScreen extends ConsumerWidget {
         ),
         actions: [
           IconButton(
-            onPressed: () {},
+            onPressed: () => context.goNamed(RouteNames.settings),
             icon: const Icon(Icons.settings_suggest_outlined, color: PresntTokens.primary),
           ),
         ],
@@ -145,7 +153,11 @@ class AvatarPreviewScreen extends ConsumerWidget {
                       ),
                     ),
                     IconButton(
-                      onPressed: () {},
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Your avatar is trained using face, voice, and behavioral data you provided.')),
+                        );
+                      },
                       icon: const Icon(Icons.help_outline_rounded, color: PresntTokens.onSurfaceVariant),
                     ),
                   ],
@@ -175,52 +187,6 @@ class AvatarPreviewScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildAvatar(String? path, double size) {
-    if (path != null && path.isNotEmpty) {
-      if (path.startsWith('http')) {
-        return Image.network(path, width: size, height: size, fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => Icon(Icons.person_rounded, size: size * 0.6, color: PresntTokens.onSurfaceVariant));
-      }
-      final file = File(path);
-      return FutureBuilder<bool>(
-        future: file.exists(),
-        builder: (ctx, snap) {
-          if (snap.data == true) {
-            return Image.file(file, width: size, height: size, fit: BoxFit.cover);
-          }
-          return Icon(Icons.person_rounded, size: size * 0.6, color: PresntTokens.onSurfaceVariant);
-        },
-      );
-    }
-    return Icon(Icons.person_rounded, size: size * 0.6, color: PresntTokens.onSurfaceVariant);
-  }
-
-  Widget _buildPreviewImage(String? path) {
-    if (path != null && path.isNotEmpty) {
-      if (path.startsWith('http')) {
-        return Image.network(path, fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => _placeholderPreview());
-      }
-      final file = File(path);
-      return FutureBuilder<bool>(
-        future: file.exists(),
-        builder: (ctx, snap) {
-          if (snap.data == true) return Image.file(file, fit: BoxFit.cover);
-          return _placeholderPreview();
-        },
-      );
-    }
-    return _placeholderPreview();
-  }
-
-  Widget _placeholderPreview() {
-    return Container(
-      color: PresntTokens.surfaceContainerLowest,
-      child: const Center(
-        child: Icon(Icons.person_rounded, size: 80, color: PresntTokens.primary),
-      ),
-    );
-  }
 
   Widget _previewPane(BuildContext context, String? livePreview) {
     return Column(
@@ -233,7 +199,7 @@ class AvatarPreviewScreen extends ConsumerWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                _buildPreviewImage(livePreview),
+                AvatarPreviewDisplay(imagePath: livePreview, fit: BoxFit.cover),
                 Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -273,7 +239,7 @@ class AvatarPreviewScreen extends ConsumerWidget {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              'RENDERING LIVE',
+                              'PREVIEW READY',
                               style: GoogleFonts.inter(
                                 fontSize: 9,
                                 letterSpacing: 1.5,
@@ -288,21 +254,19 @@ class AvatarPreviewScreen extends ConsumerWidget {
                   ),
                 ),
                 Center(
-                  child: GestureDetector(
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Live video preview will be available after you go live.')),
-                      );
-                    },
-                    child: Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.black.withValues(alpha: 0.4),
-                        border: Border.all(color: PresntTokens.primary.withValues(alpha: 0.35)),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Live video unlocks after Go Live',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: PresntTokens.onSurfaceVariant,
                       ),
-                      child: const Icon(Icons.play_arrow_rounded, size: 44, color: PresntTokens.primary),
                     ),
                   ),
                 ),
@@ -424,7 +388,7 @@ class AvatarPreviewScreen extends ConsumerWidget {
           children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: () {},
+                onPressed: () => context.goNamed(RouteNames.faceUpload),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: PresntTokens.onSurface,
                   side: BorderSide(color: PresntTokens.outlineVariant.withValues(alpha: 0.35)),
@@ -438,7 +402,7 @@ class AvatarPreviewScreen extends ConsumerWidget {
             const SizedBox(width: 12),
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: () {},
+                onPressed: () => context.goNamed(RouteNames.behavioralTraining),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: PresntTokens.onSurface,
                   side: BorderSide(color: PresntTokens.outlineVariant.withValues(alpha: 0.35)),

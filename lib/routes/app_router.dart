@@ -44,17 +44,6 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/welcome',
     redirect: (context, state) {
       final path = state.uri.path;
-      final onboardingPaths = <String>{
-        '/welcome',
-        '/sign-in',
-        '/create-account',
-        '/face-upload',
-        '/voice-record',
-        '/behavioral-training',
-        '/avatar-preview',
-        '/go-live',
-      };
-
       if (user == null) {
         if (path == '/home' || path.startsWith('/conversations') || path.startsWith('/approvals') || path.startsWith('/family') || path.startsWith('/settings')) {
           return '/welcome';
@@ -62,15 +51,30 @@ final routerProvider = Provider<GoRouter>((ref) {
         return null;
       }
 
-      if (!user.hasFaceTrained) return path == '/face-upload' ? null : '/face-upload';
-      if (!user.hasVoiceCloned) return path == '/voice-record' ? null : '/voice-record';
-      if (!user.hasBehaviorTrained) return path == '/behavioral-training' ? null : '/behavioral-training';
+      // Face upload & voice recording are skipped for now — D-ID agent has its
+      // own presenter configured in Studio. These steps will be re-enabled when
+      // the face-cloning + voice-cloning pipeline is wired up.
+      // Onboarding steps skipped — D-ID agent handles avatar rendering.
+      // Re-enable when face-cloning + voice-cloning + behavioral pipelines are wired up.
+      // if (!user.hasFaceTrained) return path == '/face-upload' ? null : '/face-upload';
+      // if (!user.hasVoiceCloned) return path == '/voice-record' ? null : '/voice-record';
+      // if (!user.hasBehaviorTrained) return path == '/behavioral-training' ? null : '/behavioral-training';
       if (!user.isLive) {
         if (path == '/go-live' || path == '/avatar-preview') return null;
         return '/avatar-preview';
       }
 
-      if (onboardingPaths.contains(path)) {
+      // Only redirect away from first-time-only onboarding pages.
+      // /face-upload, /voice-record, /behavioral-training stay accessible
+      // so users can re-do them from Settings.
+      const firstTimeOnlyPaths = {
+        '/welcome',
+        '/sign-in',
+        '/create-account',
+        '/avatar-preview',
+        '/go-live',
+      };
+      if (firstTimeOnlyPaths.contains(path)) {
         return '/home';
       }
       if (path == '/conversations/live') {

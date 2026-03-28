@@ -367,7 +367,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
             ),
           ),
           IconButton(
-            onPressed: () {},
+            onPressed: () => context.goNamed(RouteNames.settings),
             icon: Icon(Icons.settings_outlined, color: PresntTokens.surfaceBright.withValues(alpha: 0.5)),
           ),
         ],

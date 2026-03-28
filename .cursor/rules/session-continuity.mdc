@@ -1,0 +1,8 @@
+# Session Continuity
+
+When the user says "pick up where we left", "continue", "resume", or similar:
+
+- Read `.cursor/project-handoff.md` first (product/stack handoff and recurring issues).
+- Read `.cursor/session-state.md` immediately after (dated task log, code changes, pending items).
+- Use both as full context for what was done, what's pending, and what's blocked.
+- Do not ask the user to explain what happened before.
