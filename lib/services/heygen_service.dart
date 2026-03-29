@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import '../config/app_config.dart';
+import '../core/utils/app_logger.dart';
 import '../models/heygen_streaming_session.dart';
 
 class HeyGenService {
@@ -32,9 +32,10 @@ class HeyGenService {
 
     final file = File(imagePath);
     if (!await file.exists()) {
-      debugPrint('HeyGen: file not found: $imagePath');
+      AppLogger.heygen.w('_uploadAsset file not found: $imagePath');
       return null;
     }
+    AppLogger.heygen.d('_uploadAsset size=${file.lengthSync()} bytes path=$imagePath');
 
     final ext = imagePath.toLowerCase();
     final contentType = ext.endsWith('.png') ? 'image/png' : 'image/jpeg';
@@ -55,16 +56,16 @@ class HeyGenService {
         final data = json['data'] as Map<String, dynamic>?;
         final imageKey = data?['image_key']?.toString();
         if (imageKey != null && imageKey.isNotEmpty) {
-          debugPrint('HeyGen: uploaded asset, image_key=$imageKey');
+          AppLogger.heygen.i('_uploadAsset OK imageKey=$imageKey');
           return imageKey;
         }
-        debugPrint('HeyGen: upload succeeded but no image_key in response');
+        AppLogger.heygen.w('_uploadAsset: upload succeeded but no image_key in response');
         return null;
       }
-      debugPrint('HeyGen: upload failed HTTP ${response.statusCode}');
+      AppLogger.heygen.w('_uploadAsset FAIL HTTP ${response.statusCode}');
       return null;
     } catch (e) {
-      debugPrint('HeyGen: upload exception: $e');
+      AppLogger.heygen.e('_uploadAsset exception', error: e);
       return null;
     }
   }
@@ -75,24 +76,22 @@ class HeyGenService {
   Future<String?> createPhotoAvatar(List<String> imagePaths, {String name = 'Presnt Avatar'}) async {
     final apiKey = _apiKey;
     if (apiKey == null) {
-      debugPrint('HeyGen: cannot create photo avatar — missing or placeholder API key');
+      AppLogger.heygen.w('createPhotoAvatar — missing or placeholder API key');
       return null;
     }
 
     if (imagePaths.isEmpty) {
-      debugPrint('HeyGen: no images provided for photo avatar');
+      AppLogger.heygen.w('createPhotoAvatar — no images provided');
       return null;
     }
 
-    // Step 1: Upload the first image to get an image_key for group creation
-    debugPrint('HeyGen: uploading ${imagePaths.length} face photos...');
+    AppLogger.heygen.d('createPhotoAvatar — uploading ${imagePaths.length} face photos name=$name');
     final firstKey = await _uploadAsset(imagePaths.first);
     if (firstKey == null) {
-      debugPrint('HeyGen: failed to upload primary face photo');
+      AppLogger.heygen.w('createPhotoAvatar — failed to upload primary face photo');
       return null;
     }
 
-    // Step 2: Create the Photo Avatar Group with the first image
     String? groupId;
     try {
       final response = await http.post(
@@ -112,23 +111,23 @@ class HeyGenService {
         final data = json['data'] as Map<String, dynamic>?;
         groupId = data?['group_id']?.toString() ?? data?['id']?.toString();
         if (groupId == null || groupId.isEmpty) {
-          debugPrint('HeyGen: avatar group created but no group_id in response');
+          AppLogger.heygen.w('createPhotoAvatar — group created but no group_id in response');
           return null;
         }
-        debugPrint('HeyGen: photo avatar group created, group_id=$groupId');
+        AppLogger.heygen.i('createPhotoAvatar — photo avatar group created group_id=$groupId');
       } else {
         final snippet = response.body.length > 300
             ? '${response.body.substring(0, 300)}...'
             : response.body;
-        debugPrint('HeyGen: avatar group create failed HTTP ${response.statusCode} — $snippet');
+        AppLogger.heygen.w('createPhotoAvatar — group create failed HTTP ${response.statusCode}: $snippet');
         return null;
       }
     } catch (e) {
-      debugPrint('HeyGen: avatar group create exception: $e');
+      AppLogger.heygen.e('createPhotoAvatar — group create exception', error: e);
       return null;
     }
 
-    // Step 3: Upload remaining photos and add them to the group (up to 4 at a time)
+    // Upload remaining photos and add them to the group (up to 4 at a time)
     if (imagePaths.length > 1) {
       final remaining = imagePaths.sublist(1);
       final uploadedKeys = <String>[];
@@ -138,7 +137,6 @@ class HeyGenService {
       }
 
       if (uploadedKeys.isNotEmpty) {
-        // HeyGen accepts up to 4 image_keys per add request
         for (var i = 0; i < uploadedKeys.length; i += 4) {
           final batch = uploadedKeys.sublist(i, (i + 4).clamp(0, uploadedKeys.length));
           try {
@@ -155,12 +153,12 @@ class HeyGenService {
               }),
             );
             if (addResponse.statusCode == 200) {
-              debugPrint('HeyGen: added ${batch.length} looks to group $groupId');
+              AppLogger.heygen.d('createPhotoAvatar — added ${batch.length} looks to group $groupId');
             } else {
-              debugPrint('HeyGen: add looks failed HTTP ${addResponse.statusCode}');
+              AppLogger.heygen.w('createPhotoAvatar — add looks failed HTTP ${addResponse.statusCode}');
             }
           } catch (e) {
-            debugPrint('HeyGen: add looks exception: $e');
+            AppLogger.heygen.e('createPhotoAvatar — add looks exception', error: e);
           }
         }
       }
@@ -169,12 +167,12 @@ class HeyGenService {
     return groupId;
   }
 
-  /// Lists available Interactive/Streaming avatars. Useful for verifying
-  /// whether a photo avatar is available for streaming.
+  /// Lists available Interactive/Streaming avatars.
   Future<List<Map<String, dynamic>>> listStreamingAvatars() async {
     final apiKey = _apiKey;
     if (apiKey == null) return [];
 
+    AppLogger.heygen.d('listStreamingAvatars — REQUEST');
     try {
       final response = await http.get(
         Uri.parse(AppConfig.heygenStreamingAvatarListUrl),
@@ -184,11 +182,14 @@ class HeyGenService {
         final json = jsonDecode(response.body) as Map<String, dynamic>;
         final data = json['data'];
         if (data is List) {
+          AppLogger.heygen.d('listStreamingAvatars — OK count=${data.length}');
           return data.cast<Map<String, dynamic>>();
         }
+      } else {
+        AppLogger.heygen.w('listStreamingAvatars — FAIL HTTP ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('HeyGen: list streaming avatars exception: $e');
+      AppLogger.heygen.e('listStreamingAvatars exception', error: e);
     }
     return [];
   }
@@ -203,13 +204,15 @@ class HeyGenService {
     if (apiKey == null) {
       lastStreamingSessionError =
           'HEYGEN_API_KEY missing or placeholder in .env. Add a real key and fully restart the app.';
-      debugPrint('HeyGen: missing or placeholder HEYGEN_API_KEY in .env');
+      AppLogger.heygen.w('createStreamingSession — HEYGEN_API_KEY missing or placeholder');
       return null;
     }
 
     final resolvedAvatarId = (avatarId?.trim().isNotEmpty == true)
         ? avatarId!.trim()
         : AppConfig.heygenStreamingAvatarId.trim();
+
+    AppLogger.heygen.i('createStreamingSession — avatarId=${resolvedAvatarId.isEmpty ? "default" : resolvedAvatarId} voiceId=${voiceId ?? "default"}');
 
     final body = <String, dynamic>{
       'quality': AppConfig.heygenStreamingQuality,
@@ -239,7 +242,7 @@ class HeyGenService {
         final inner = data?['data'];
         if (inner is! Map<String, dynamic>) {
           lastStreamingSessionError = 'HeyGen returned an unexpected response (no data). Check Xcode/terminal logs.';
-          debugPrint('HeyGen: unexpected response shape (no data object)');
+          AppLogger.heygen.w('createStreamingSession — unexpected response shape (no data object)');
           return null;
         }
         final sid = inner['session_id']?.toString();
@@ -247,10 +250,11 @@ class HeyGenService {
         final token = inner['access_token']?.toString();
         if (sid == null || sid.isEmpty || url == null || url.isEmpty || token == null || token.isEmpty) {
           lastStreamingSessionError = 'HeyGen response missing session_id, url, or access_token.';
-          debugPrint('HeyGen: missing session_id, url, or access_token in response');
+          AppLogger.heygen.w('createStreamingSession — missing session_id, url, or access_token');
           return null;
         }
         _sessionId = sid;
+        AppLogger.heygen.i('createStreamingSession OK sessionId=$sid avatarId=${resolvedAvatarId.isEmpty ? "default" : resolvedAvatarId} voiceId=${voiceId ?? "default"}');
         return HeyGenStreamingSession(
           sessionId: sid,
           liveKitUrl: url,
@@ -260,7 +264,7 @@ class HeyGenService {
         final snippet = response.body.length > 400
             ? '${response.body.substring(0, 400)}...'
             : response.body;
-        debugPrint('HeyGen Session Error: HTTP ${response.statusCode} — $snippet');
+        AppLogger.heygen.w('createStreamingSession — HTTP ${response.statusCode}: $snippet');
         final short = snippet.length > 180 ? '${snippet.substring(0, 180)}…' : snippet;
         lastStreamingSessionError =
             'HeyGen HTTP ${response.statusCode}. Often: invalid avatar_id / voice (try clearing custom face in Firestore or set HEYGEN_STREAMING_AVATAR_ID). Detail: $short';
@@ -268,7 +272,7 @@ class HeyGenService {
       }
     } catch (e) {
       lastStreamingSessionError = 'HeyGen network error: $e';
-      debugPrint("HeyGen Exception: $e");
+      AppLogger.heygen.e('createStreamingSession exception', error: e);
       return null;
     }
   }
@@ -277,10 +281,11 @@ class HeyGenService {
   Future<void> sendTaskToAvatar(String textPayload) async {
     final apiKey = _apiKey;
     if (_sessionId == null || apiKey == null) {
-      debugPrint("Cannot send HeyGen task: Missing Session ID or real API Key");
+      AppLogger.heygen.w('sendTaskToAvatar — missing sessionId or API key sessionId=$_sessionId');
       return;
     }
 
+    AppLogger.heygen.d('sendTaskToAvatar — sessionId=$_sessionId textLen=${textPayload.length}');
     try {
       final response = await http.post(
         Uri.parse(AppConfig.heygenStreamingTaskUrl),
@@ -296,10 +301,12 @@ class HeyGenService {
       );
 
       if (response.statusCode != 200) {
-        debugPrint("HeyGen Task Error: ${response.statusCode}");
+        AppLogger.heygen.w('sendTaskToAvatar FAIL HTTP ${response.statusCode}');
+      } else {
+        AppLogger.heygen.d('sendTaskToAvatar OK sessionId=$_sessionId');
       }
     } catch (e) {
-      debugPrint("HeyGen Task Exception: $e");
+      AppLogger.heygen.e('sendTaskToAvatar exception', error: e);
     }
   }
 
@@ -307,6 +314,7 @@ class HeyGenService {
   Future<void> closeSession() async {
     if (_sessionId == null) return;
 
+    AppLogger.heygen.i('closeSession — sessionId=$_sessionId');
     final apiKey = _apiKey;
     try {
       await http.post(
@@ -317,9 +325,10 @@ class HeyGenService {
         },
         body: jsonEncode({'session_id': _sessionId}),
       );
+      AppLogger.heygen.i('closeSession OK sessionId=$_sessionId');
       _sessionId = null;
     } catch (e) {
-      debugPrint("Close Session Exception: $e");
+      AppLogger.heygen.e('closeSession exception', error: e);
     }
   }
 }

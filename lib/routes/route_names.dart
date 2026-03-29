@@ -16,20 +16,10 @@ class RouteNames {
   static const String conversations = 'conversations';
   static const String liveConversation = 'liveConversation';
   static const String transcriptDetail = 'transcriptDetail';
-
-  // Approvals
-  static const String approvals = 'approvals';
-  static const String approvalHistory = 'approvalHistory';
-
-  // Family
-  static const String family = 'family';
-  static const String accessTiers = 'accessTiers';
-  static const String posthumousSettings = 'posthumousSettings';
-
   // Settings
   static const String settings = 'settings';
   static const String avatarSetup = 'avatarSetup';
-  static const String actionPolicies = 'actionPolicies';
-  static const String credentialsVault = 'credentialsVault';
-  static const String integrations = 'integrations';
+
+  // Debug
+  static const String logViewer = 'logViewer';
 }

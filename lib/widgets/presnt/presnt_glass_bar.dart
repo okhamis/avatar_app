@@ -26,41 +26,45 @@ class PresntGlassTopBar extends StatelessWidget implements PreferredSizeWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
-          height: height,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          height: height + MediaQuery.paddingOf(context).top,
+          padding: EdgeInsets.only(
+            left: 16, 
+            right: 16, 
+            top: MediaQuery.paddingOf(context).top
+          ),
           decoration: BoxDecoration(
             color: PresntTokens.surface.withValues(alpha: 0.6),
             boxShadow: [
-              BoxShadow(
-                color: PresntTokens.primary.withValues(alpha: 0.04),
-                blurRadius: 64,
-                offset: const Offset(0, 8),
-              ),
+               BoxShadow(
+                 color: PresntTokens.primary.withValues(alpha: 0.04),
+                 blurRadius: 64,
+                 offset: const Offset(0, 8),
+               ),
             ],
           ),
-          child: SafeArea(
-            bottom: false,
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 48,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: leading ?? const SizedBox.shrink(),
-                  ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 48,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: leading ?? const SizedBox.shrink(),
                 ),
-                Expanded(
-                  child: Center(child: title ?? const SizedBox.shrink()),
-                ),
-                Flexible(
+              ),
+              Expanded(
+                child: Center(child: title ?? const SizedBox.shrink()),
+              ),
+              Flexible(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: actionWidgets,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

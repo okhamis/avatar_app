@@ -1,6 +1,9 @@
 import 'dart:io';
 import 'dart:ui';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:record/record.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,17 +12,21 @@ import 'dart:async';
 import '../../config/app_config.dart';
 import '../../routes/route_names.dart';
 import '../../providers/avatar_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/session_provider.dart';
 import '../../services/heygen_service.dart';
 import '../../services/liveavatar_service.dart';
 import '../../services/elevenlabs_service.dart';
 import '../../services/did_service.dart';
+import '../../services/claude_service.dart';
 import '../../models/heygen_streaming_session.dart';
 import '../../widgets/heygen_livekit_video.dart';
 import '../../widgets/did_webrtc_video.dart';
 import '../../providers/streaming_settings_provider.dart';
+import '../../config/test_profile_config.dart';
 import '../../theme/presnt_tokens.dart';
 import '../../widgets/avatar_preview_display.dart';
+import '../../core/utils/app_logger.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class LiveConversationScreen extends ConsumerStatefulWidget {
@@ -46,6 +53,7 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
   final HeyGenService _heyGenService = HeyGenService();
   final LiveAvatarService _liveAvatarService = LiveAvatarService();
   final DidService _didService = DidService();
+  final ClaudeService _claudeService = ClaudeService();
   final GlobalKey<DidWebrtcVideoState> _didVideoKey = GlobalKey<DidWebrtcVideoState>();
   
   /// Active Streaming Engine (default matches [StreamingEngineNotifier]).
@@ -56,8 +64,20 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
   bool _heyGenTaskLipSync = false;
   HeyGenStreamingSession? _heyGenSession;
   
-  final bool _isListening = false;
+  bool _isListening = false;
+  bool _showTextInput = false;
   String? _clonedVoiceId;
+  String? _testProfilePreviewPath;
+  String? _testProfileFaceUrl;
+  bool _sessionReady = false;
+
+  final AudioRecorder _voiceRecorder = AudioRecorder();
+  StreamSubscription<List<int>>? _voiceStreamSub;
+  final List<List<int>> _voicePcmChunks = [];
+
+  static const int _wavSampleRate = 44100;
+  static const int _wavChannels = 1;
+  static const int _wavBitsPerSample = 16;
 
   @override
   void initState() {
@@ -70,22 +90,208 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
   }
 
   Future<void> _initSession() async {
+    final sessionSw = Stopwatch()..start();
+    AppLogger.conversation.i('[SESSION][1] _initSession start');
+    final isTestProfile = ref.read(testProfileEnabledProvider);
+    AppLogger.conversation.d('[SESSION][1] isTestProfile=$isTestProfile');
+
+    if (isTestProfile) {
+      final testVoiceId = TestProfileConfig.elevenLabsVoiceId;
+      _clonedVoiceId = testVoiceId.isNotEmpty ? testVoiceId : null;
+      _testProfilePreviewPath = TestProfileConfig.faceImagePath.isNotEmpty
+          ? TestProfileConfig.faceImagePath
+          : null;
+      AppLogger.conversation.d('[SESSION][2] Test profile — voiceId=$_clonedVoiceId facePath=$_testProfilePreviewPath');
+
+      // Upload face to D-ID at runtime so we get an s3:// URL for streaming.
+      final facePath = TestProfileConfig.faceImagePath;
+      if (facePath.isNotEmpty) {
+        AppLogger.conversation.d('[SESSION][3] Uploading face to D-ID: $facePath');
+        try {
+          final uploaded = await DidService().uploadImage(facePath);
+          if (uploaded != null && uploaded.isNotEmpty) {
+            _testProfileFaceUrl = uploaded;
+            AppLogger.conversation.i('[SESSION][3] D-ID upload SUCCESS: faceUrl=$_testProfileFaceUrl');
+          } else {
+            AppLogger.conversation.w('[SESSION][3] D-ID upload returned null/empty — avatar will use fallback');
+          }
+        } catch (e) {
+          AppLogger.conversation.e('[SESSION][3] D-ID upload EXCEPTION', error: e);
+        }
+      } else {
+        AppLogger.conversation.d('[SESSION][3] SKIP D-ID upload — faceImagePath is empty in TestProfileConfig');
+      }
+
+      AppLogger.conversation.i('[SESSION][4] Test profile ready — voiceId=$_clonedVoiceId faceUrl=$_testProfileFaceUrl');
+    } else {
+      AppLogger.conversation.d('[SESSION][2] Real profile — loading from Firestore');
+      final user = ref.read(authProvider);
+      if (user != null) {
+        try {
+          await ref.read(avatarProvider.notifier).loadAvatar(user.uid);
+        } catch (e) {
+          AppLogger.conversation.w('[SESSION][2] loadAvatar FAIL (non-fatal)', error: e);
+        }
+      }
+      final avatar = ref.read(avatarProvider);
+      _clonedVoiceId = (avatar?.voiceId.isNotEmpty ?? false) ? avatar!.voiceId : null;
+      AppLogger.conversation.d('[SESSION][3] Real profile — voiceId=$_clonedVoiceId faceId=${avatar?.faceId} previewImagePath=${avatar?.previewImagePath}');
+    }
+
     final avatar = ref.read(avatarProvider);
     final avatarId = avatar?.avatarId ?? '';
-    _clonedVoiceId = avatar?.voiceId;
+    AppLogger.conversation.d('[SESSION][5] Starting session — avatarId=$avatarId');
     await ref.read(currentSessionProvider.notifier).startSession(avatarId, 'Participant');
+    AppLogger.conversation.i('[SESSION][6] Session started in ${sessionSw.elapsedMilliseconds}ms — _sessionReady=true faceUrl=$_testProfileFaceUrl');
+    if (mounted) setState(() => _sessionReady = true);
     _initTts();
     _initAvatarVideo();
   }
 
-  void _toggleListening() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Voice input requires launching from Xcode (known Flutter macOS limitation). Use text input for now.')),
-    );
+  /// Assembles a complete WAV file (header + PCM data) from collected chunks.
+  Uint8List _buildWavFile(int totalPcmBytes) {
+    final byteRate = _wavSampleRate * _wavChannels * _wavBitsPerSample ~/ 8;
+    final blockAlign = _wavChannels * _wavBitsPerSample ~/ 8;
+    final out = ByteData(44 + totalPcmBytes);
+
+    void ascii(int offset, String s) {
+      for (var i = 0; i < s.length; i++) {
+        out.setUint8(offset + i, s.codeUnitAt(i));
+      }
+    }
+
+    // WAV header (44 bytes)
+    ascii(0, 'RIFF');
+    out.setUint32(4, totalPcmBytes + 36, Endian.little);
+    ascii(8, 'WAVE');
+    ascii(12, 'fmt ');
+    out.setUint32(16, 16, Endian.little);
+    out.setUint16(20, 1, Endian.little);
+    out.setUint16(22, _wavChannels, Endian.little);
+    out.setUint32(24, _wavSampleRate, Endian.little);
+    out.setUint32(28, byteRate, Endian.little);
+    out.setUint16(32, blockAlign, Endian.little);
+    out.setUint16(34, _wavBitsPerSample, Endian.little);
+    ascii(36, 'data');
+    out.setUint32(40, totalPcmBytes, Endian.little);
+
+    // PCM data
+    var offset = 44;
+    for (final chunk in _voicePcmChunks) {
+      for (final byte in chunk) {
+        out.setUint8(offset++, byte);
+      }
+    }
+
+    return out.buffer.asUint8List();
+  }
+
+  Future<void> _toggleListening() async {
+    if (_isListening) {
+      await _stopVoiceRecording();
+    } else {
+      await _startVoiceRecording();
+    }
+  }
+
+  Future<void> _startVoiceRecording() async {
+    try {
+      final hasPermission = await _voiceRecorder.hasPermission();
+      if (!hasPermission) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Microphone permission is required.')),
+        );
+        return;
+      }
+
+      await _audioPlayer.stop();
+      _voicePcmChunks.clear();
+
+      final stream = await _voiceRecorder.startStream(
+        const RecordConfig(
+          encoder: AudioEncoder.pcm16bits,
+          sampleRate: _wavSampleRate,
+          numChannels: _wavChannels,
+        ),
+      );
+
+      _voiceStreamSub = stream.listen((data) {
+        _voicePcmChunks.add(data);
+      });
+
+      if (!mounted) return;
+      setState(() => _isListening = true);
+    } catch (e) {
+      AppLogger.conversation.e('[VOICE] Start recording error', error: e);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not start recording: $e')),
+      );
+    }
+  }
+
+  Future<void> _stopVoiceRecording() async {
+    // 1. Detach stream
+    _voiceStreamSub?.cancel();
+    _voiceStreamSub = null;
+
+    // 2. Fire-and-forget native stop
+    _voiceRecorder.stop().timeout(const Duration(seconds: 1), onTimeout: () => null).catchError((_) => null);
+
+    // 3. Build WAV from collected PCM chunks
+    int totalPcmBytes = 0;
+    for (final chunk in _voicePcmChunks) {
+      totalPcmBytes += chunk.length;
+    }
+
+    String? wavPath;
+    if (totalPcmBytes > 0) {
+      final Directory supportDir = await getApplicationSupportDirectory();
+      final Directory voiceDir = Directory('${supportDir.path}/voice_input');
+      await voiceDir.create(recursive: true);
+      wavPath = '${voiceDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.wav';
+      final Uint8List wavBytes = _buildWavFile(totalPcmBytes);
+      try {
+        await File(wavPath).writeAsBytes(wavBytes, flush: true);
+        AppLogger.conversation.d('[VOICE] WAV written: $wavPath (${wavBytes.length} bytes)');
+      } catch (e) {
+        AppLogger.conversation.e('[VOICE] WAV write failed', error: e);
+        wavPath = null;
+      }
+    }
+
+    _voicePcmChunks.clear();
+    if (!mounted) return;
+    setState(() => _isListening = false);
+
+    // 4. Transcribe and send
+    if (wavPath != null && wavPath.isNotEmpty) {
+      try {
+        final transcript = await _elevenLabs.transcribeSpeech(wavPath);
+        if (transcript.isNotEmpty && mounted) {
+          _msgController.text = transcript;
+          await _sendMessage();
+        }
+      } catch (e) {
+        AppLogger.conversation.e('[VOICE] Transcription error', error: e);
+      }
+    }
   }
 
   Future<void> _initAvatarVideo() async {
     _activeEngine = ref.read(streamingEngineProvider);
+
+    // Wait for Firebase Storage upload to complete (Custom mode only)
+    if (ref.read(avatarModeProvider) == AvatarMode.custom) {
+      var retries = 0;
+      while (retries < 10) {
+        final p = ref.read(avatarProvider)?.previewImagePath ?? '';
+        if (p.startsWith('http')) break;
+        await Future.delayed(const Duration(milliseconds: 500));
+        retries++;
+      }
+    }
 
     if (_activeEngine == StreamingEngine.dId) {
       if (mounted) {
@@ -129,7 +335,7 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
         _heyGenTaskLipSync = true;
       });
       final aid = AppConfig.heygenStreamingAvatarId.trim();
-      debugPrint('HeyGen streaming (avatar=${streamingAvatarOverride ?? (aid.isEmpty ? "heygen_default" : aid)}, voice=${voiceId ?? "default"}).');
+      AppLogger.conversation.i('HeyGen streaming connected avatar=${streamingAvatarOverride ?? (aid.isEmpty ? "heygen_default" : aid)} voice=${voiceId ?? "default"}');
     } else if (mounted) {
       setState(() => _heyGenTaskLipSync = false);
     }
@@ -170,57 +376,38 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
   /// HeyGen: streaming task (server audio). LiveAvatar LITE: local ElevenLabs/TTS (WebSocket lip-sync not wired yet).
   /// D-ID: sends full text script to stream for generation.
   Future<void> _speakAsAvatar(String text) async {
+    AppLogger.conversation.d('[SPEAK_AVATAR] engine=$_activeEngine text="${text.length > 80 ? text.substring(0, 80) : text}" didVideoReady=${_didVideoKey.currentState != null} clonedVoiceId=$_clonedVoiceId');
+
     if (_activeEngine == StreamingEngine.dId) {
-      await _didVideoKey.currentState?.speak(text);
+      final didState = _didVideoKey.currentState;
+      AppLogger.conversation.d('[SPEAK_AVATAR] D-ID path — didState=${didState != null ? "ready streamId=${didState.streamId} sessionId=${didState.sessionId}" : "NULL — widget not mounted yet"}');
+      await didState?.speak(text);
       return;
     }
 
     if (_heyGenConnected && _heyGenTaskLipSync) {
+      AppLogger.conversation.d('[SPEAK_AVATAR] HeyGen path — sending task');
       _heyGenService.sendTaskToAvatar(text);
       return;
     }
 
-    // Try ElevenLabs with the user's cloned voice
     if (_clonedVoiceId != null && _clonedVoiceId!.isNotEmpty) {
+      AppLogger.conversation.d('[SPEAK_AVATAR] ElevenLabs path — voiceId=$_clonedVoiceId');
       try {
         final audioPath = await _elevenLabs.generateSpeech(text, voiceId: _clonedVoiceId);
+        AppLogger.conversation.d('[SPEAK_AVATAR] ElevenLabs audioPath="$audioPath"');
         if (audioPath.isNotEmpty) {
+          AppLogger.conversation.i('[SPEAK_AVATAR] ElevenLabs speech playing path=$audioPath');
           await _audioPlayer.play(DeviceFileSource(audioPath));
           return;
         }
       } catch (e) {
-        debugPrint('ElevenLabs TTS playback failed, falling back to system TTS: $e');
+        AppLogger.conversation.e('[SPEAK_AVATAR] ElevenLabs EXCEPTION — falling back to system TTS', error: e);
       }
     }
 
-    // Fallback: system TTS
+    AppLogger.conversation.d('[SPEAK_AVATAR] System TTS fallback');
     _flutterTts.speak(text);
-  }
-
-  String _streamingDebugMessage() {
-    if (_activeEngine == StreamingEngine.dId) {
-      if (_didVideoKey.currentState?.isStreamReady ?? false) {
-        return 'D-ID video stream is active.';
-      }
-      final hint = _didVideoKey.currentState?.statusHint ?? 'Starting…';
-      final looksLikeError =
-          hint.contains('Failed') || hint.contains('Invalid') || hint.contains('Error');
-      if (looksLikeError) {
-        return 'D-ID: $hint — verify DID_API_KEY (email:password from Studio) and DID_SOURCE_URL in .env; full restart after edits. Check debug console for HTTP lines.';
-      }
-      if (hint == 'Connecting...') {
-        return 'D-ID: connecting… (wait a few seconds). If this never clears, check .env and run the app from the project folder so .env loads.';
-      }
-      return 'D-ID: $hint';
-    }
-    if (_activeEngine == StreamingEngine.liveAvatar) {
-      if (_heyGenConnected) return 'LiveAvatar video stream is active.';
-      return _liveAvatarService.lastError ??
-          'LiveAvatar did not connect. Set LIVEAVATAR_API_KEY and LIVEAVATAR_AVATAR_ID in .env.';
-    }
-    if (_heyGenConnected) return 'HeyGen video stream is active.';
-    return _heyGenService.lastStreamingSessionError ??
-        'HeyGen did not connect. Check HEYGEN_API_KEY and terminal logs.';
   }
 
   Future<void> _sendMessage() async {
@@ -228,13 +415,19 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
     if (text.isEmpty || !_sessionActive) return;
     _msgController.clear();
     _addMessage(text, isAvatar: false);
-
+    AppLogger.conversation.d('[SEND] text="$text" engine=$_activeEngine');
     setState(() => _isTyping = true);
-    final llm = ref.read(behavioralLlmProvider);
-    final response = await llm.generateBehavioralResponse(text);
-    if (mounted) {
-      setState(() => _isTyping = false);
-      _addMessage(response, isAvatar: true);
+    final replySw = Stopwatch()..start();
+    try {
+      final reply = await _claudeService.generateBehavioralResponse(text);
+      AppLogger.conversation.i('[SEND] LLM reply in ${replySw.elapsedMilliseconds}ms replyLen=${reply.length}');
+      if (mounted) {
+        setState(() => _isTyping = false);
+        _addMessage(reply, isAvatar: true);
+      }
+    } catch (e) {
+      AppLogger.conversation.e('[SEND] Claude error', error: e);
+      if (mounted) setState(() => _isTyping = false);
     }
   }
 
@@ -245,6 +438,7 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
   }
 
   Future<void> _endSession() async {
+    AppLogger.conversation.i('_endSession — duration=$_elapsed messagesCount=${_messages.length} engine=$_activeEngine');
     setState(() {
       _sessionActive = false;
       _heyGenSession = null;
@@ -270,6 +464,8 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
     _msgController.dispose();
     _scrollController.dispose();
     _durationTimer?.cancel();
+    _voiceStreamSub?.cancel();
+    _voiceRecorder.dispose();
     if (_activeEngine == StreamingEngine.liveAvatar) {
       _liveAvatarService.stopSession();
     } else if (_activeEngine == StreamingEngine.heyGen) {
@@ -281,23 +477,43 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
   @override
   Widget build(BuildContext context) {
     final avatar = ref.watch(avatarProvider);
-    final previewPath = avatar?.previewImagePath;
+    final previewPath = avatar?.previewImagePath ?? _testProfilePreviewPath;
     final avatarMode = ref.watch(avatarModeProvider);
 
     String? customSourceUrl;
     String? customVoiceId;
     String? customVoiceProvider;
-    if (avatarMode == AvatarMode.custom && avatar != null) {
-      final preview = avatar.previewImagePath ?? '';
-      if (preview.startsWith('http')) {
-        customSourceUrl = preview;
+
+    // Test profile always uses custom pipeline (face upload + cloned voice).
+    final isTestProfile = ref.watch(testProfileEnabledProvider);
+    final useCustomPipeline = avatarMode == AvatarMode.custom || isTestProfile;
+
+    if (useCustomPipeline) {
+      final faceId = avatar?.faceId ?? '';
+      AppLogger.conversation.d('[BUILD] resolving sourceUrl — _testProfileFaceUrl="$_testProfileFaceUrl" avatar.faceId="$faceId" DID_SOURCE_URL="${AppConfig.didSourceUrl}"');
+
+      if (_testProfileFaceUrl != null && _testProfileFaceUrl!.isNotEmpty) {
+        customSourceUrl = _testProfileFaceUrl;
+        AppLogger.conversation.d('[BUILD] sourceUrl=RUNTIME_UPLOAD value="$customSourceUrl"');
+      } else if (faceId.startsWith('s3://') || faceId.startsWith('https://')) {
+        customSourceUrl = faceId;
+        AppLogger.conversation.d('[BUILD] sourceUrl=AVATAR_FACE_ID value="$customSourceUrl"');
       } else if (AppConfig.didSourceUrl.isNotEmpty) {
         customSourceUrl = AppConfig.didSourceUrl;
+        AppLogger.conversation.d('[BUILD] sourceUrl=ENV_FALLBACK value="$customSourceUrl"');
+      } else {
+        AppLogger.conversation.w('[BUILD] sourceUrl=NULL — no face URL available, D-ID will use Studio agent');
       }
-      if (avatar.voiceId.isNotEmpty) {
-        customVoiceId = avatar.voiceId;
+
+      final voiceId = avatar?.voiceId ?? '';
+      if (voiceId.isNotEmpty) {
+        customVoiceId = voiceId;
+        customVoiceProvider = 'elevenlabs';
+      } else if (_clonedVoiceId != null && _clonedVoiceId!.isNotEmpty) {
+        customVoiceId = _clonedVoiceId;
         customVoiceProvider = 'elevenlabs';
       }
+      AppLogger.conversation.d('[BUILD] voiceId="$customVoiceId" voiceProvider="$customVoiceProvider"');
     }
 
     return Scaffold(
@@ -305,8 +521,12 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          if (_activeEngine == StreamingEngine.dId)
-            Positioned.fill(
+          if (_activeEngine == StreamingEngine.dId && _sessionReady)
+            Positioned(
+              top: 60,
+              left: 0,
+              right: 0,
+              bottom: 0,
               child: DidWebrtcVideo(
                 key: _didVideoKey,
                 didService: _didService,
@@ -397,7 +617,7 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                'LIVE SESSION · ${_formatDuration(_elapsed)}',
+                                'LIVE SESSION · ${_formatDuration(_elapsed)} · B7',
                                 style: GoogleFonts.inter(
                                   fontSize: 9,
                                   letterSpacing: 1.5,
@@ -458,11 +678,10 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
                   ),
                 ),
 
-                Expanded(
-                  child: (_heyGenSession != null || _activeEngine == StreamingEngine.dId)
-                      ? const SizedBox.shrink()
-                      : Center(
-                          child: AnimatedBuilder(
+                if (_heyGenSession == null && _activeEngine != StreamingEngine.dId)
+                  Expanded(
+                    child: Center(
+                      child: AnimatedBuilder(
                             animation: _pulse,
                             builder: (context, _) {
                               final v = _pulse.value;
@@ -497,203 +716,170 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
                         ),
                 ),
 
-                SizedBox(
-                  height: 160,
-                  child: ShaderMask(
-                    shaderCallback: (rect) {
-                      return LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black,
-                          Colors.black,
-                        ],
-                        stops: const [0.0, 0.15, 1.0],
-                      ).createShader(rect);
-                    },
-                    blendMode: BlendMode.dstIn,
-                    child: ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 18),
-                      itemCount: _messages.length + (_isTyping ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index == _messages.length && _isTyping) {
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: Text(
-                              'Avatar is thinking…',
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                color: PresntTokens.primary.withValues(alpha: 0.8),
-                                fontStyle: FontStyle.italic,
-                              ),
-                            ),
-                          );
-                        }
-                        final msg = _messages[index];
-                        final isAvatar = msg['isAvatar'] as bool;
-                        final text = msg['text'] as String;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 14),
-                          child: Column(
-                            crossAxisAlignment: isAvatar ? CrossAxisAlignment.start : CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                isAvatar ? 'AI PROXY' : 'PARTICIPANT',
-                                style: GoogleFonts.inter(
-                                  fontSize: 9,
-                                  letterSpacing: 1.2,
-                                  color: isAvatar ? PresntTokens.secondary : Colors.white38,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              ClipRRect(
-                                borderRadius: BorderRadius.only(
-                                  topLeft: const Radius.circular(18),
-                                  topRight: const Radius.circular(18),
-                                  bottomLeft: Radius.circular(isAvatar ? 4 : 18),
-                                  bottomRight: Radius.circular(isAvatar ? 18 : 4),
-                                ),
-                                child: BackdropFilter(
-                                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                    constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.82),
-                                    decoration: BoxDecoration(
-                                      color: isAvatar
-                                          ? PresntTokens.primary.withValues(alpha: 0.12)
-                                          : Colors.white.withValues(alpha: 0.08),
-                                      border: Border.all(
-                                        color: isAvatar
-                                            ? PresntTokens.primary.withValues(alpha: 0.25)
-                                            : Colors.white.withValues(alpha: 0.06),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      text,
-                                      style: GoogleFonts.inter(
-                                        fontSize: 13,
-                                        height: 1.4,
-                                        color: isAvatar ? PresntTokens.primary : Colors.white.withValues(alpha: 0.92),
-                                        fontStyle: isAvatar ? FontStyle.italic : FontStyle.normal,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _msgController,
-                          enabled: _sessionActive,
-                          style: GoogleFonts.inter(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: 'Message…',
-                            hintStyle: TextStyle(color: Colors.white38),
-                            filled: true,
-                            fillColor: Colors.white.withValues(alpha: 0.06),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                          ),
-                          onSubmitted: (_) => _sendMessage(),
+                // Bottom glass panel (Stitch design)
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.10),
+                        border: Border(
+                          top: BorderSide(color: Colors.white.withValues(alpha: 0.20)),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      IconButton.filled(
-                        onPressed: _sessionActive ? _sendMessage : null,
-                        style: IconButton.styleFrom(
-                          backgroundColor: PresntTokens.primary,
-                          foregroundColor: PresntTokens.onPrimaryFixed,
-                        ),
-                        icon: const Icon(Icons.send_rounded),
-                      ),
-                    ],
-                  ),
-                ),
-
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.45),
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                        ),
-                        child: Row(
+                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                      child: SafeArea(
+                        top: false,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Spacer(),
-                            IconButton(
-                              style: IconButton.styleFrom(
-                                backgroundColor: _isListening
-                                    ? PresntTokens.primary.withValues(alpha: 0.3)
-                                    : Colors.white.withValues(alpha: 0.06),
-                              ),
-                              onPressed: _toggleListening,
-                              icon: Icon(
-                                _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                                color: _isListening ? PresntTokens.primary : Colors.white70,
+                            // Status / last message text
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 300),
+                              child: Text(
+                                _buildStatusText(),
+                                key: ValueKey(_buildStatusText()),
+                                style: GoogleFonts.manrope(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.white.withValues(alpha: 0.90),
+                                  height: 1.3,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            IconButton(
-                              style: IconButton.styleFrom(
-                                backgroundColor: Colors.white.withValues(alpha: 0.06),
-                              ),
-                              onPressed: () {
-                                // SnackBars do not appear in the terminal; mirror for logs.
-                                final msg = _streamingDebugMessage();
-                                debugPrint('[LiveSession] Video status (same as snackbar): $msg');
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(msg)),
-                                );
-                              },
-                              icon: const Icon(Icons.videocam_outlined, color: Colors.white70),
-                            ),
-                            const SizedBox(width: 4),
-                            Material(
-                              color: PresntTokens.errorContainer.withValues(alpha: 0.45),
-                              borderRadius: BorderRadius.circular(20),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(20),
-                                onTap: _endSession,
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.call_end_rounded, color: PresntTokens.error, size: 22),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'END',
-                                        style: GoogleFonts.manrope(
-                                          fontWeight: FontWeight.w800,
-                                          color: PresntTokens.error,
-                                        ),
+
+                            const SizedBox(height: 20),
+
+                            // Collapsible text input
+                            AnimatedSize(
+                              duration: const Duration(milliseconds: 220),
+                              curve: Curves.easeInOut,
+                              child: _showTextInput
+                                  ? Padding(
+                                      padding: const EdgeInsets.only(bottom: 16),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: TextField(
+                                              controller: _msgController,
+                                              enabled: _sessionActive,
+                                              autofocus: true,
+                                              style: GoogleFonts.inter(color: Colors.white),
+                                              decoration: InputDecoration(
+                                                hintText: 'Type a message…',
+                                                hintStyle: const TextStyle(color: Colors.white38),
+                                                filled: true,
+                                                fillColor: Colors.white.withValues(alpha: 0.10),
+                                                border: OutlineInputBorder(
+                                                  borderRadius: BorderRadius.circular(24),
+                                                  borderSide: BorderSide.none,
+                                                ),
+                                                contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                                              ),
+                                              onSubmitted: (_) {
+                                                _sendMessage();
+                                                setState(() => _showTextInput = false);
+                                              },
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          GestureDetector(
+                                            onTap: _sessionActive
+                                                ? () {
+                                                    _sendMessage();
+                                                    setState(() => _showTextInput = false);
+                                                  }
+                                                : null,
+                                            child: Container(
+                                              width: 48,
+                                              height: 48,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: PresntTokens.primary.withValues(alpha: 0.85),
+                                              ),
+                                              child: const Icon(Icons.arrow_upward_rounded, color: Colors.black, size: 22),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ],
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+
+                            // Controls row: keyboard | mic | end
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                // Keyboard toggle
+                                _CircleButton(
+                                  onTap: () => setState(() => _showTextInput = !_showTextInput),
+                                  child: Icon(
+                                    _showTextInput ? Icons.keyboard_hide_rounded : Icons.keyboard_rounded,
+                                    color: Colors.white70,
+                                    size: 22,
                                   ),
                                 ),
-                              ),
+
+                                // Mic button
+                                AnimatedBuilder(
+                                  animation: _pulse,
+                                  builder: (context, child) {
+                                    return GestureDetector(
+                                      onTap: _toggleListening,
+                                      child: Stack(
+                                        alignment: Alignment.center,
+                                        children: [
+                                          if (_isListening)
+                                            Container(
+                                              width: 68,
+                                              height: 68,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: PresntTokens.primary.withValues(
+                                                  alpha: 0.25 * _pulse.value,
+                                                ),
+                                              ),
+                                            ),
+                                          Container(
+                                            width: 52,
+                                            height: 52,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: _isListening
+                                                  ? PresntTokens.primary.withValues(alpha: 0.20)
+                                                  : Colors.white.withValues(alpha: 0.10),
+                                              border: Border.all(
+                                                color: _isListening
+                                                    ? PresntTokens.primary.withValues(alpha: 0.7)
+                                                    : Colors.white.withValues(alpha: 0.15),
+                                              ),
+                                            ),
+                                            child: Icon(
+                                              _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                                              color: _isListening ? PresntTokens.primary : Colors.white,
+                                              size: 24,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+
+                                // End call
+                                _CircleButton(
+                                  onTap: _endSession,
+                                  color: PresntTokens.error.withValues(alpha: 0.20),
+                                  borderColor: PresntTokens.error.withValues(alpha: 0.30),
+                                  child: const Icon(Icons.call_end_rounded, color: PresntTokens.error, size: 22),
+                                ),
+                              ],
                             ),
+                            const SizedBox(height: 16),
                           ],
                         ),
                       ),
@@ -708,10 +894,46 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
     );
   }
 
+  String _buildStatusText() {
+    if (_isListening) return 'Listening…';
+    if (_isTyping) return 'Thinking…';
+    if (_messages.isNotEmpty) {
+      final last = _messages.last;
+      return last['text'] as String;
+    }
+    return 'Say something…';
+  }
+
   Widget _blurOrb(Color c, double r) {
     return ImageFiltered(
       imageFilter: ImageFilter.blur(sigmaX: 100, sigmaY: 100),
       child: Container(width: r, height: r, decoration: BoxDecoration(shape: BoxShape.circle, color: c)),
+    );
+  }
+}
+
+class _CircleButton extends StatelessWidget {
+  final VoidCallback onTap;
+  final Widget child;
+  final Color? color;
+  final Color? borderColor;
+
+  const _CircleButton({required this.onTap, required this.child, this.color, this.borderColor});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 52,
+        height: 52,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color ?? Colors.white.withValues(alpha: 0.10),
+          border: Border.all(color: borderColor ?? Colors.white.withValues(alpha: 0.15)),
+        ),
+        child: Center(child: child),
+      ),
     );
   }
 }

@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'route_names.dart';
@@ -12,18 +11,15 @@ import '../screens/onboarding/behavioral_training_screen.dart';
 import '../screens/onboarding/avatar_preview_screen.dart';
 import '../screens/onboarding/go_live_screen.dart';
 
-import '../screens/home/home_screen.dart';
 import '../screens/conversations/conversation_list_screen.dart';
 import '../screens/conversations/live_conversation_screen.dart';
 import '../screens/conversations/transcript_detail_screen.dart';
 
 import '../screens/settings/avatar_setup_screen.dart';
+import '../screens/debug/log_viewer_screen.dart';
 
-import '../theme/app_colors.dart';
 import '../providers/auth_provider.dart';
-import '../providers/avatar_provider.dart';
 import '../providers/streaming_settings_provider.dart';
-import '../models/avatar_model.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final user = ref.watch(authProvider);
@@ -47,35 +43,45 @@ final routerProvider = Provider<GoRouter>((ref) {
       // the face-cloning + voice-cloning pipeline is wired up.
       // In Custom mode, require full onboarding (photo → voice → behavioral).
       // In Studio mode, skip straight to home (D-ID agent is pre-configured).
+      // Test profile mode skips onboarding screens entirely.
       final avatarMode = ref.read(avatarModeProvider);
-      if (avatarMode == AvatarMode.custom) {
+      final testProfileEnabled = ref.read(testProfileEnabledProvider);
+
+      if (avatarMode == AvatarMode.custom && !user.isLive) {
+        // If test profile is enabled, skip everything and go straight to live conversation
+        if (testProfileEnabled) {
+          // Allow settings, live conversation, and re-training screens
+          if (path == '/conversations/live' || path.startsWith('/settings') || path == '/face-upload' || path == '/voice-record' || path == '/behavioral-training') return null;
+          return '/conversations/live';
+        }
+
+        // Enforce Custom mode onboarding flow
         if (!user.hasFaceTrained) return path == '/face-upload' ? null : '/face-upload';
         if (!user.hasVoiceCloned) return path == '/voice-record' ? null : '/voice-record';
         if (!user.hasBehaviorTrained) return path == '/behavioral-training' ? null : '/behavioral-training';
+        // After all training is complete, show avatar preview
+        if (path == '/avatar-preview' || path == '/go-live') return null;
+        return '/avatar-preview';
       }
       if (!user.isLive) {
         if (path == '/go-live' || path == '/avatar-preview') return null;
         return '/avatar-preview';
       }
 
+      // Redirect to live conversation for authenticated users
+      if (path == '/home' || path == '/welcome' || path == '/sign-in' || path == '/create-account') {
+        return '/conversations/live';
+      }
+
       // Only redirect away from first-time-only onboarding pages.
       // /face-upload, /voice-record, /behavioral-training stay accessible
       // so users can re-do them from Settings.
       const firstTimeOnlyPaths = {
-        '/welcome',
-        '/sign-in',
-        '/create-account',
         '/avatar-preview',
         '/go-live',
       };
       if (firstTimeOnlyPaths.contains(path)) {
-        return '/home';
-      }
-      if (path == '/conversations/live') {
-        final avatar = ref.read(avatarProvider);
-        if (avatar?.status != AvatarStatus.live) {
-          return '/go-live';
-        }
+        return '/conversations/live';
       }
       return null;
     },
@@ -120,69 +126,36 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: RouteNames.goLive,
         builder: (context, state) => const GoLiveScreen(),
       ),
-      StatefulShellRoute.indexedStack(
-        builder: (context, state, navigationShell) {
-          return Scaffold(
-            body: navigationShell,
-            bottomNavigationBar: BottomNavigationBar(
-              backgroundColor: AppColors.background,
-              selectedItemColor: AppColors.primary,
-              unselectedItemColor: AppColors.textSecondary,
-              currentIndex: navigationShell.currentIndex,
-              type: BottomNavigationBarType.fixed,
-              onTap: (index) => navigationShell.goBranch(
-                index,
-                initialLocation: index == navigationShell.currentIndex,
-              ),
-              items: const [
-                BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-                BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chats'),
-                BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
-              ],
-            ),
-          );
-        },
-        branches: [
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/home',
-                name: RouteNames.home,
-                builder: (context, state) => const HomeScreen(),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/conversations',
-                name: RouteNames.conversations,
-                builder: (context, state) => const ConversationListScreen(),
-                routes: [
-                  GoRoute(
-                    path: 'live',
-                    name: RouteNames.liveConversation,
-                    builder: (context, state) => const LiveConversationScreen(),
-                  ),
-                  GoRoute(
-                    path: 'transcript/:id',
-                    name: RouteNames.transcriptDetail,
-                    builder: (context, state) => TranscriptDetailScreen(id: state.pathParameters['id']!),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/settings',
-                name: RouteNames.settings,
-                builder: (context, state) => const AvatarSetupScreen(),
-              ),
-            ],
+      // Full-screen live conversation — main experience
+      GoRoute(
+        path: '/conversations/live',
+        name: RouteNames.liveConversation,
+        builder: (context, state) => const LiveConversationScreen(),
+      ),
+      // Chat history — accessible from Settings
+      GoRoute(
+        path: '/conversations',
+        name: RouteNames.conversations,
+        builder: (context, state) => const ConversationListScreen(),
+        routes: [
+          GoRoute(
+            path: 'transcript/:id',
+            name: RouteNames.transcriptDetail,
+            builder: (context, state) => TranscriptDetailScreen(id: state.pathParameters['id']!),
           ),
         ],
+      ),
+      // Settings
+      GoRoute(
+        path: '/settings',
+        name: RouteNames.settings,
+        builder: (context, state) => const AvatarSetupScreen(),
+      ),
+      // Debug log viewer
+      GoRoute(
+        path: '/debug/logs',
+        name: RouteNames.logViewer,
+        builder: (context, state) => const LogViewerScreen(),
       ),
     ],
   );

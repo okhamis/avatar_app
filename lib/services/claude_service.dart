@@ -1,24 +1,28 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import '../config/llm_prompts.dart';
+import '../core/utils/app_logger.dart';
 import 'behavioral_llm.dart';
 
 class ClaudeService implements BehavioralLlm {
   @override
   Future<String> generateBehavioralResponse(String prompt) async {
-    final apiKey = dotenv.env['CLAUDE_API_KEY'];
+    final apiKey = dotenv.env['ANTHROPIC_API_KEY'] ?? dotenv.env['CLAUDE_API_KEY'];
     if (apiKey == null || apiKey.isEmpty || apiKey.startsWith('your_')) {
+      AppLogger.claude.w('No ANTHROPIC_API_KEY — returning stub response');
       await Future.delayed(const Duration(milliseconds: 800));
       return 'I am your Presnt avatar. (Add a real CLAUDE_API_KEY in .env to enable live Claude replies.)';
     }
 
-    try {
-      final model = dotenv.env['CLAUDE_MODEL']?.trim();
-      final modelId = (model == null || model.isEmpty) ? AppConfig.claudeDefaultModel : model;
+    final model = dotenv.env['CLAUDE_MODEL']?.trim();
+    final modelId = (model == null || model.isEmpty) ? AppConfig.claudeDefaultModel : model;
 
+    AppLogger.claude.i('generateBehavioralResponse — model=$modelId promptLen=${prompt.length}');
+    AppLogger.claude.d('Request: maxTokens=${AppConfig.claudeMaxTokens} promptPreview="${prompt.length > 80 ? prompt.substring(0, 80) : prompt}"');
+
+    try {
       final response = await http.post(
         Uri.parse(AppConfig.anthropicMessagesUrl),
         headers: {
@@ -40,7 +44,7 @@ class ClaudeService implements BehavioralLlm {
       );
 
       if (response.statusCode != 200) {
-        debugPrint('Claude error status: ${response.statusCode}');
+        AppLogger.claude.w('API error HTTP ${response.statusCode}', error: response.body.length > 300 ? response.body.substring(0, 300) : response.body);
         return 'I could not reach my behavioral model right now.';
       }
 
@@ -49,21 +53,25 @@ class ClaudeService implements BehavioralLlm {
       if (content is List && content.isNotEmpty) {
         final first = content.first;
         if (first is Map<String, dynamic> && first['text'] is String) {
-          return first['text'] as String;
+          final text = first['text'] as String;
+          AppLogger.claude.i('generateBehavioralResponse OK — responseLen=${text.length}');
+          return text;
         }
       }
+      AppLogger.claude.w('generateBehavioralResponse: empty/unexpected response shape');
       return 'I received an empty response from the behavioral model.';
     } catch (e) {
-      debugPrint('Claude request failed: $e');
+      AppLogger.claude.e('Request failed', error: e);
       return 'Behavioral model communication error.';
     }
   }
 
   @override
   Future<String> trainBehavior(Map<String, String> answers) async {
-    // Placeholder for a future pipeline that stores prompts/profile traits.
+    AppLogger.claude.d('trainBehavior snapshot: ${answers.length} answers');
     await Future.delayed(const Duration(milliseconds: 900));
-    debugPrint('Behavior profile snapshot captured: ${answers.length} answers.');
-    return 'behavior_${DateTime.now().millisecondsSinceEpoch}';
+    final id = 'behavior_${DateTime.now().millisecondsSinceEpoch}';
+    AppLogger.claude.i('trainBehavior complete behaviorId=$id');
+    return id;
   }
 }

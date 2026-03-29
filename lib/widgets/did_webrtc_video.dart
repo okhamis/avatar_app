@@ -38,6 +38,8 @@ class DidWebrtcVideoState extends State<DidWebrtcVideo> {
   String _status = 'Connecting...';
   bool _isConnected = false;
   bool _initialized = false;
+  Size? _videoSize;
+  Timer? _dimensionPoller;
 
   /// True when WebRTC video is flowing (not while showing status / error).
   bool get isStreamReady => _isConnected && streamId != null && sessionId != null;
@@ -57,11 +59,16 @@ class DidWebrtcVideoState extends State<DidWebrtcVideo> {
 
     try {
       final isCustom = widget.sourceUrl != null && widget.sourceUrl!.isNotEmpty;
+      debugPrint('[WebRTC] Starting — mode=${isCustom ? "custom" : "studio"} sourceUrl=${widget.sourceUrl ?? "null"}');
+
       final sessionData = isCustom
           ? await widget.didService.createCustomStream(sourceUrl: widget.sourceUrl!)
           : await widget.didService.createStream();
+
+      debugPrint('[WebRTC] createStream response: ${sessionData == null ? "NULL — lastError=${widget.didService.lastError}" : "OK id=${sessionData["id"]}"}');
+
       if (sessionData == null || !mounted) {
-        setState(() => _status = 'D-ID Session Failed');
+        setState(() => _status = 'D-ID Session Failed: ${widget.didService.lastError ?? "null response"}');
         return;
       }
 
@@ -70,6 +77,8 @@ class DidWebrtcVideoState extends State<DidWebrtcVideo> {
       // Agents API returns `jsep`; legacy API returned `offer` — handle both.
       final jsep = sessionData['jsep'] ?? sessionData['offer'];
       final rawIceServers = sessionData['ice_servers'];
+
+      debugPrint('[WebRTC] session id=$sid session_id=$sessid jsep=${jsep != null ? "present" : "MISSING"} iceServers=${rawIceServers?.length ?? 0}');
 
       if (sid == null || sessid == null || jsep == null) {
         setState(() => _status = 'Invalid D-ID stream response (missing id/session_id/jsep)');
@@ -101,12 +110,38 @@ class DidWebrtcVideoState extends State<DidWebrtcVideo> {
       };
 
       _peerConnection!.onTrack = (event) {
+        debugPrint('[WebRTC] onTrack kind=${event.track.kind}');
         if (event.track.kind == 'video') {
           _renderer.srcObject = event.streams[0];
+          debugPrint('[WebRTC] Video track received — avatar should appear');
           if (mounted) {
             setState(() {
               _isConnected = true;
               _status = 'Connected';
+            });
+            // Talks/Streams API requires a speak task to start rendering video.
+            // Send a silent warmup so the avatar face appears immediately.
+            Future.delayed(const Duration(milliseconds: 500), () {
+              if (streamId != null && sessionId != null) {
+                debugPrint('[WebRTC] Sending warmup speak task to render face');
+                widget.didService.sendTask(
+                  streamId: streamId!,
+                  sessionId: sessionId!,
+                  text: 'Hello.',
+                  voiceProvider: widget.voiceProvider,
+                  voiceId: widget.voiceId,
+                );
+              }
+            });
+            // Poll for video dimensions — available after first frame renders.
+            _dimensionPoller = Timer.periodic(const Duration(milliseconds: 500), (t) {
+              final w = _renderer.videoWidth;
+              final h = _renderer.videoHeight;
+              if (w > 0 && h > 0) {
+                t.cancel();
+                debugPrint('[WebRTC] Video dimensions: ${w}x${h} ratio=${w/h}');
+                if (mounted) setState(() => _videoSize = Size(w.toDouble(), h.toDouble()));
+              }
             });
           }
         }
@@ -124,13 +159,14 @@ class DidWebrtcVideoState extends State<DidWebrtcVideo> {
         sessionId: sessionId!,
         answer: {'type': answer.type, 'sdp': answer.sdp},
       );
-      
+      debugPrint('[WebRTC] startStream result: $started');
+
       if (!started && mounted) {
         setState(() => _status = 'Failed to start ICE exchange');
       }
 
     } catch (e) {
-      debugPrint('D-ID WebRTC error: $e');
+      debugPrint('[WebRTC] Exception: $e');
       final detail = widget.didService.lastError;
       if (mounted) {
         setState(() => _status = detail != null ? 'Error: $detail' : 'Error connecting — check debug console');
@@ -152,6 +188,7 @@ class DidWebrtcVideoState extends State<DidWebrtcVideo> {
 
   @override
   void dispose() {
+    _dimensionPoller?.cancel();
     final sId = streamId;
     final sessId = sessionId;
     if (sId != null && sessId != null) {
@@ -218,17 +255,25 @@ class DidWebrtcVideoState extends State<DidWebrtcVideo> {
       );
     }
 
+    if (widget.fillScreen) {
+      // D-ID outputs 512×512 square. Use Cover to fill the portrait screen,
+      // aligned to the top so the face appears in the same position as the
+      // static preview photo (which also uses BoxFit.cover + center alignment).
+      return SizedBox.expand(
+        child: RTCVideoView(
+          _renderer,
+          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+        ),
+      );
+    }
+
     final inner = ColoredBox(
-      color: Colors.black.withValues(alpha: widget.fillScreen ? 1.0 : 0.35),
+      color: Colors.black.withValues(alpha: 0.35),
       child: RTCVideoView(
         _renderer,
-        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
       ),
     );
-
-    if (widget.fillScreen) {
-      return SizedBox.expand(child: inner);
-    }
     return ClipRRect(
       borderRadius: BorderRadius.circular(999),
       child: AspectRatio(

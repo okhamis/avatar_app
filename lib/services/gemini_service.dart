@@ -1,8 +1,8 @@
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter/foundation.dart';
 import '../config/app_config.dart';
 import '../config/llm_prompts.dart';
+import '../core/utils/app_logger.dart';
 import 'behavioral_llm.dart';
 
 class GeminiService implements BehavioralLlm {
@@ -23,23 +23,22 @@ class GeminiService implements BehavioralLlm {
     final apiKey = _geminiKeyFromEnv();
 
     if (apiKey == null || apiKey.startsWith('your_')) {
+      AppLogger.gemini.w('GEMINI_API_KEY missing — returning stub response');
       await Future.delayed(const Duration(seconds: 1));
       return "I am your Presnt avatar. I received your message and I am processing it on your behalf. (Configure GEMINI_API_KEY to enable live responses.)";
     }
 
-    // Common mistake: "gen-lang-client-..." is not a Gemini API key (use AI Studio key, usually starts with AIza).
+    // Common mistake: "gen-lang-client-..." is not a Gemini API key
     if (apiKey.startsWith('gen-lang-client-')) {
-      debugPrint(
-        'GEMINI_API_KEY looks like a client id, not an API key. Use https://aistudio.google.com/app/apikey',
-      );
+      AppLogger.gemini.w('GEMINI_API_KEY looks like a client ID — use AIza key from AI Studio');
       return "GEMINI_API_KEY in .env is not a valid Gemini API key (\"gen-lang-client-...\" is the wrong kind of credential). Open https://aistudio.google.com/app/apikey , create an API key, and paste the value that typically starts with \"AIza\".";
     }
 
     if (!apiKey.startsWith('AIza')) {
-      debugPrint(
-        'GEMINI_API_KEY does not start with AIza; if the API fails, create a key at https://aistudio.google.com/app/apikey',
-      );
+      AppLogger.gemini.w('GEMINI_API_KEY format unexpected — expected AIza prefix; if API fails create key at AI Studio');
     }
+
+    AppLogger.gemini.i('generateBehavioralResponse — model=${AppConfig.geminiModel} promptLen=${prompt.length}');
 
     try {
       final model = GenerativeModel(
@@ -52,9 +51,11 @@ class GeminiService implements BehavioralLlm {
         Content.text(prompt)
       ]);
 
-      return response.text ?? "Sorry, no response generated from the Gemini neural core.";
+      final text = response.text ?? "Sorry, no response generated from the Gemini neural core.";
+      AppLogger.gemini.i('generateBehavioralResponse OK — responseLen=${text.length}');
+      return text;
     } catch (e) {
-      debugPrint("Gemini API Exception: $e");
+      AppLogger.gemini.e('API exception', error: e);
       final msg = e.toString();
       final lower = msg.toLowerCase();
       final looksLikeKeyProblem = lower.contains('api key') &&
@@ -63,6 +64,7 @@ class GeminiService implements BehavioralLlm {
               lower.contains('permission denied') ||
               lower.contains('api_key_invalid'));
       if (looksLikeKeyProblem) {
+        AppLogger.gemini.e('Invalid/unauthorized Gemini API key — check AI Studio');
         return "Invalid or unauthorized Gemini API key. Create a key at https://aistudio.google.com/app/apikey , set GEMINI_API_KEY in .env (no quotes), full restart the app.";
       }
       return "Communication error with my Gemini core: ${msg.length > 200 ? msg.substring(0, 200) : msg}";
@@ -71,9 +73,10 @@ class GeminiService implements BehavioralLlm {
 
   @override
   Future<String> trainBehavior(Map<String, String> answers) async {
-    // Collect fine-tuning metadata into a context blob for future Gemini context windows
+    AppLogger.gemini.d('trainBehavior placeholder: ${answers.length} answers');
     await Future.delayed(const Duration(seconds: 2));
-    debugPrint("Simulated Training completed with ${answers.length} datasets using Gemini framework.");
-    return "behavior_${DateTime.now().millisecondsSinceEpoch}";
+    final id = "behavior_${DateTime.now().millisecondsSinceEpoch}";
+    AppLogger.gemini.i('trainBehavior complete behaviorId=$id');
+    return id;
   }
 }

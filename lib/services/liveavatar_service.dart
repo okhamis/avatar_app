@@ -1,9 +1,9 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import '../config/app_config.dart';
+import '../core/utils/app_logger.dart';
 import '../models/heygen_streaming_session.dart';
 
 /// LiveAvatar LITE: session token + start → LiveKit (replaces HeyGen `streaming.new`).
@@ -23,9 +23,8 @@ class LiveAvatarService {
 
   /// Creates a LITE session and returns LiveKit credentials (same shape as HeyGen streaming).
   ///
-  /// Stops any [active sessions](https://docs.liveavatar.com) listed for this API key first, then
-  /// retries once if start still returns concurrency limit (4032)—common when a prior run crashed
-  /// without calling [stopSession].
+  /// Stops any active sessions listed for this API key first, then
+  /// retries once if start still returns concurrency limit (4032).
   Future<HeyGenStreamingSession?> createLiteSession() async {
     lastError = null;
     _stopSessionId = null;
@@ -34,14 +33,16 @@ class LiveAvatarService {
     final avatarId = AppConfig.liveAvatarAvatarId.trim();
     if (apiKey == null) {
       lastError = 'LIVEAVATAR_API_KEY missing or placeholder in .env';
-      debugPrint('LiveAvatar: $lastError');
+      AppLogger.liveAvatar.w('createLiteSession — $lastError');
       return null;
     }
     if (avatarId.isEmpty) {
       lastError = 'Set LIVEAVATAR_AVATAR_ID in .env (UUID from app.liveavatar.com → avatars).';
-      debugPrint('LiveAvatar: $lastError');
+      AppLogger.liveAvatar.w('createLiteSession — $lastError');
       return null;
     }
+
+    AppLogger.liveAvatar.i('createLiteSession — avatarId=$avatarId sandbox=${AppConfig.liveAvatarSandbox}');
 
     try {
       await _stopAllActiveSessions(apiKey);
@@ -50,7 +51,7 @@ class LiveAvatarService {
       if (result.session != null) return result.session;
 
       if (result.concurrencyLimit) {
-        debugPrint('LiveAvatar: concurrency limit on start — stopping active sessions again, retry once');
+        AppLogger.liveAvatar.w('createLiteSession — concurrency limit on start, stopping active sessions and retrying');
         await _stopAllActiveSessions(apiKey);
         result = await _tokenAndStart(apiKey, avatarId);
         if (result.session != null) return result.session;
@@ -59,7 +60,7 @@ class LiveAvatarService {
       return null;
     } catch (e, st) {
       lastError = 'LiveAvatar error: $e';
-      debugPrint('LiveAvatar exception: $e\n$st');
+      AppLogger.liveAvatar.e('createLiteSession exception', error: e, stackTrace: st);
       return null;
     }
   }
@@ -79,6 +80,7 @@ class LiveAvatarService {
       },
     };
 
+    AppLogger.liveAvatar.d('_tokenAndStart — REQUEST sessions/token mode=LITE avatarId=$avatarId sandbox=${AppConfig.liveAvatarSandbox}');
     final tokenRes = await http.post(
       tokenUrl,
       headers: {
@@ -91,7 +93,7 @@ class LiveAvatarService {
 
     if (tokenRes.statusCode != 200) {
       lastError = _shortHttpError('sessions/token', tokenRes);
-      debugPrint('LiveAvatar token error: $lastError');
+      AppLogger.liveAvatar.w('_tokenAndStart sessions/token failed: $lastError');
       return (session: null, concurrencyLimit: false);
     }
 
@@ -100,11 +102,13 @@ class LiveAvatarService {
     final sessionToken = tokenData?['session_token']?.toString();
     if (sessionToken == null || sessionToken.isEmpty) {
       lastError = 'LiveAvatar token response missing session_token';
-      debugPrint('LiveAvatar: $lastError — ${tokenRes.body}');
+      AppLogger.liveAvatar.w('_tokenAndStart — $lastError body=${tokenRes.body}');
       return (session: null, concurrencyLimit: false);
     }
+    AppLogger.liveAvatar.i('_tokenAndStart — session token obtained, requesting start...');
 
     final startUrl = Uri.parse('${AppConfig.liveAvatarApiBase}/v1/sessions/start');
+    final sw = Stopwatch()..start();
     final startRes = await http.post(
       startUrl,
       headers: {
@@ -116,7 +120,7 @@ class LiveAvatarService {
     if (startRes.statusCode != 200 && startRes.statusCode != 201) {
       final concurrency = _isConcurrencyLimit(startRes);
       lastError = concurrency ? _concurrencyUserMessage : _shortHttpError('sessions/start', startRes);
-      debugPrint('LiveAvatar start error: $lastError');
+      AppLogger.liveAvatar.w('_tokenAndStart sessions/start failed concurrency=$concurrency: $lastError');
       return (session: null, concurrencyLimit: concurrency);
     }
 
@@ -127,12 +131,12 @@ class LiveAvatarService {
     final clientToken = data?['livekit_client_token']?.toString();
     if (sid == null || sid.isEmpty || url == null || url.isEmpty || clientToken == null || clientToken.isEmpty) {
       lastError = 'LiveAvatar start response missing livekit fields';
-      debugPrint('LiveAvatar: $lastError — ${startRes.body}');
+      AppLogger.liveAvatar.w('_tokenAndStart — $lastError body=${startRes.body}');
       return (session: null, concurrencyLimit: false);
     }
 
     _stopSessionId = sid;
-    debugPrint('LiveAvatar: LITE session started, session_id=$sid');
+    AppLogger.liveAvatar.i('_tokenAndStart — LITE session ready in ${sw.elapsedMilliseconds}ms sessionId=$sid');
     return (
       session: HeyGenStreamingSession(
         sessionId: sid,
@@ -146,12 +150,12 @@ class LiveAvatarService {
   Future<void> _stopAllActiveSessions(String apiKey) async {
     final ids = await _listActiveSessionIds(apiKey);
     if (ids.isEmpty) return;
-    debugPrint('LiveAvatar: stopping ${ids.length} active session(s) before start');
+    AppLogger.liveAvatar.i('_stopAllActiveSessions — stopping ${ids.length} active session(s)');
     for (final id in ids) {
       try {
         await _stopRemoteSession(apiKey, id);
       } catch (e) {
-        debugPrint('LiveAvatar: stop $id failed: $e');
+        AppLogger.liveAvatar.w('_stopAllActiveSessions — stop $id failed', error: e);
       }
     }
   }
@@ -168,7 +172,7 @@ class LiveAvatarService {
       },
     );
     if (res.statusCode != 200) {
-      debugPrint('LiveAvatar list sessions HTTP ${res.statusCode}: ${res.body.length > 200 ? '${res.body.substring(0, 200)}…' : res.body}');
+      AppLogger.liveAvatar.w('_listActiveSessionIds HTTP ${res.statusCode}: ${res.body.length > 200 ? '${res.body.substring(0, 200)}…' : res.body}');
       return [];
     }
     try {
@@ -183,9 +187,10 @@ class LiveAvatarService {
           if (id != null && id.isNotEmpty) ids.add(id);
         }
       }
+      AppLogger.liveAvatar.d('_listActiveSessionIds — found ${ids.length} active session(s)');
       return ids;
     } catch (e) {
-      debugPrint('LiveAvatar list sessions parse error: $e');
+      AppLogger.liveAvatar.e('_listActiveSessionIds parse error', error: e);
       return [];
     }
   }
@@ -212,10 +217,12 @@ class LiveAvatarService {
     _stopSessionId = null;
     if (apiKey == null) return;
 
+    AppLogger.liveAvatar.i('stopSession — sessionId=$sid');
     try {
       await _stopRemoteSession(apiKey, sid);
+      AppLogger.liveAvatar.i('stopSession OK sessionId=$sid');
     } catch (e) {
-      debugPrint('LiveAvatar stop exception: $e');
+      AppLogger.liveAvatar.w('stopSession exception', error: e);
     }
   }
 
@@ -229,7 +236,7 @@ class LiveAvatarService {
     }
   }
 
-  @visibleForTesting
+  // ignore: unused_element
   static bool debugIsConcurrencyLimitResponse(http.Response res) => _isConcurrencyLimit(res);
 
   static const String _concurrencyUserMessage =

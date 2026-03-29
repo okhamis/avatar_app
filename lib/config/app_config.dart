@@ -84,7 +84,7 @@ abstract final class AppConfig {
   static String get elevenLabsTtsBaseUrl =>
       _env('ELEVENLABS_TTS_BASE_URL', 'https://api.elevenlabs.io/v1/text-to-speech');
   static String get elevenLabsVoiceId => _env('ELEVENLABS_VOICE_ID', '21m00Tcm4TlvDq8ikWAM');
-  static String get elevenLabsModelId => _env('ELEVENLABS_MODEL_ID', 'eleven_monolingual_v1');
+  static String get elevenLabsModelId => _env('ELEVENLABS_MODEL_ID', 'eleven_turbo_v2_5');
   static double get elevenLabsStability => _envDouble('ELEVENLABS_STABILITY', 0.5);
   static double get elevenLabsSimilarityBoost => _envDouble('ELEVENLABS_SIMILARITY_BOOST', 0.5);
 
@@ -92,14 +92,14 @@ abstract final class AppConfig {
   static String get anthropicMessagesUrl =>
       _env('ANTHROPIC_MESSAGES_URL', 'https://api.anthropic.com/v1/messages');
   static String get anthropicVersion => _env('ANTHROPIC_VERSION', '2023-06-01');
-  static String get claudeDefaultModel => _env('CLAUDE_MODEL', 'claude-sonnet-4-20250514');
+  static String get claudeDefaultModel => _env('CLAUDE_MODEL', 'claude-haiku-4-5-20251001');
   static int get claudeMaxTokens => _envInt('CLAUDE_MAX_TOKENS', 300);
 
   // —— Google Gemini ——
   static String get geminiModel => _env('GEMINI_MODEL', 'gemini-2.5-flash');
 
   // —— Behavioral LLM selection ——
-  static String get behaviorLlm => _env('BEHAVIOR_LLM', 'gemini').toLowerCase().trim();
+  static String get behaviorLlm => _env('BEHAVIOR_LLM', 'claude').toLowerCase().trim();
 
   /// When true, live behavioral replies use the [behavioralChat] Cloud Function (Gemini key stays on the server).
   /// Requires Firebase Auth sign-in and a deployed function. Ignores `BEHAVIOR_LLM=claude` (server runs Gemini).
@@ -129,6 +129,6 @@ abstract final class AppConfig {
   static String get firestoreApprovalsCollection => _env('FIRESTORE_APPROVALS_COLLECTION', 'approvals');
 
   // —— Face upload limits ——
-  static int get faceUploadMinPhotos => _envInt('FACE_UPLOAD_MIN', 5);
-  static int get faceUploadMaxPhotos => _envInt('FACE_UPLOAD_MAX', 10);
+  static int get faceUploadMinPhotos => _envInt('FACE_UPLOAD_MIN', 1);
+  static int get faceUploadMaxPhotos => _envInt('FACE_UPLOAD_MAX', 3);
 }

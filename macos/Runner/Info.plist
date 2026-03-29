@@ -32,5 +32,30 @@
 	<string>Presnt needs microphone access to capture your voice for your digital twin.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Presnt uses speech recognition to convert your voice into text for live conversations.</string>
+	<key>GIDClientID</key>
+	<string>1058350892241-vfjvf7h4v5p3n5n5n5n5n5n5n5n5n5n5.apps.googleusercontent.com</string>
+	<key>FacebookAppID</key>
+	<string>YOUR_FACEBOOK_APP_ID</string>
+	<key>FacebookDisplayName</key>
+	<string>Presnt</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.1058350892241-vfjvf7h4v5p3n5n5n5n5n5n5n5n5n5n5</string>
+				<string>fb1058350892241</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>fbapi</string>
+		<string>fb-messenger-share-api</string>
+		<string>fbauth2</string>
+		<string>fbshareextension</string>
+	</array>
 </dict>
 </plist>

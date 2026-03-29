@@ -63,8 +63,9 @@ class AvatarPreviewScreen extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'STEP 06 OF 06',
@@ -85,6 +86,7 @@ class AvatarPreviewScreen extends ConsumerWidget {
                       ),
                     ),
                   ],
+                ),
                 ),
                 _stepDots(),
               ],

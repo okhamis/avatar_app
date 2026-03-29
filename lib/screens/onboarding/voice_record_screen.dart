@@ -9,6 +9,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
+import '../../debug/test_data_helper.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/content_strings.dart';
 import '../../providers/avatar_provider.dart';
@@ -30,9 +31,13 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
   bool _isSubmitting = false;
   Timer? _playbackTimer;
   String? _recordedFilePath;
+  // Debug: result of last ElevenLabs clone attempt
+  String? _cloneResultVoiceId; // non-null = success, empty string = tried but failed
+  String? _cloneErrorHint;
   final AudioRecorder _recorder = AudioRecorder();
   final AudioPlayer _player = AudioPlayer();
   StreamSubscription<List<int>>? _streamSub;
+  StreamSubscription<void>? _playerCompletionSub;
   final List<List<int>> _pcmChunks = [];
 
   static const int _wavSampleRate = 44100;
@@ -43,7 +48,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
   @override
   void initState() {
     super.initState();
-    _player.onPlayerComplete.listen((_) {
+    _playerCompletionSub = _player.onPlayerComplete.listen((_) {
       if (!mounted) return;
       setState(() => _isPlayingPreview = false);
     });
@@ -54,12 +59,39 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
         duration: Duration(milliseconds: 650 + (i * 37 % 280)),
       )..repeat(reverse: true),
     );
+    // In debug mode, try to load test voice recording automatically
+    if (kDebugMode) {
+      _loadTestVoiceIfAvailable();
+    }
+  }
+
+  Future<void> _loadTestVoiceIfAvailable() async {
+    try {
+      final testVoice = await TestDataHelper.loadTestVoiceRecording();
+      if (testVoice != null && mounted) {
+        setState(() {
+          _recordedFilePath = testVoice.path;
+        });
+        debugPrint('[VOICE] Auto-loaded test voice from ${testVoice.path}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Loaded test voice from Documents'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('[VOICE] Error loading test voice: $e');
+    }
   }
 
   @override
   void dispose() {
     _playbackTimer?.cancel();
     _streamSub?.cancel();
+    _playerCompletionSub?.cancel();
     _recorder.dispose();
     _player.dispose();
     for (final c in _waveCtrls) {
@@ -278,33 +310,67 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
 
     if (_isRecording) await _stopRecording();
 
-    setState(() => _isSubmitting = true);
+    setState(() {
+      _isSubmitting = true;
+      _cloneResultVoiceId = null;
+      _cloneErrorHint = null;
+    });
     final notifier = ref.read(avatarProvider.notifier);
     final authNotifier = ref.read(authProvider.notifier);
 
     try {
-      // 1. Update training flag — triggers GoRouter redirect to /behavioral-training.
+      // 1. Clone voice and await the result so we know if it succeeded.
+      final samplePath = _recordedFilePath ?? '';
+      debugPrint('[VOICE_RECORD][STEP1] samplePath=$samplePath');
+      String clonedVoiceId = '';
+      if (samplePath.isNotEmpty) {
+        try {
+          debugPrint('[VOICE_RECORD][STEP2] calling saveVoiceDraft...');
+          clonedVoiceId = await notifier.saveVoiceDraft(
+            ownerId: user.uid,
+            samplePath: samplePath,
+          );
+          debugPrint('[VOICE_RECORD][STEP3] saveVoiceDraft returned voiceId=$clonedVoiceId');
+        } catch (e) {
+          debugPrint('[VOICE_RECORD][STEP3] saveVoiceDraft error: $e');
+          if (mounted) {
+            setState(() {
+              _cloneResultVoiceId = '';
+              _cloneErrorHint = e.toString();
+            });
+          }
+        }
+      } else {
+        debugPrint('[VOICE_RECORD][STEP2] No recording — skipping clone');
+      }
+
+      if (mounted) {
+        setState(() {
+          _cloneResultVoiceId = clonedVoiceId;
+          _cloneErrorHint = clonedVoiceId.isEmpty && samplePath.isNotEmpty
+              ? 'Clone returned empty voice_id — check API key plan (Creator+) and audio length'
+              : null;
+        });
+      }
+
+      // 2. Mark training flag (after clone attempt so we have a real result).
+      debugPrint('[VOICE_RECORD][STEP4] calling updateTrainingFlags...');
       await authNotifier.updateTrainingFlags(hasVoiceCloned: true);
-      debugPrint('[VOICE_RECORD] hasVoiceCloned=true set');
+      debugPrint('[VOICE_RECORD][STEP5] hasVoiceCloned=true set');
 
-      // 2. Save voice draft fire-and-forget (avatar state change must not block navigation).
-      notifier.saveVoiceDraft(
-        ownerId: user.uid,
-        samplePath: _recordedFilePath ?? 'sample_${DateTime.now().millisecondsSinceEpoch}.m4a',
-      ).then((_) {
-        debugPrint('[VOICE_RECORD] Voice draft saved');
-      }).catchError((Object e) {
-        debugPrint('[VOICE_RECORD] Voice draft save error (non-blocking): $e');
-      });
+      // 3. In debug mode, pause briefly so the banner is visible before navigation.
+      if (kDebugMode && mounted) {
+        await Future.delayed(const Duration(seconds: 2));
+      }
 
-      // 3. Navigate explicitly in case redirect hasn't fired yet.
+      // 4. Navigate explicitly.
       if (!mounted) return;
       context.goNamed(RouteNames.behavioralTraining);
     } catch (e) {
       debugPrint('[VOICE_RECORD] Voice setup error: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Voice setup failed. Please retry.')),
+        SnackBar(content: Text('Voice setup failed: $e')),
       );
     } finally {
       if (mounted) {
@@ -326,6 +392,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
           onPressed: () async {
             await _recorder.stop();
             await _player.stop();
+            if (!mounted) return;
             // Undo the face-trained flag so the redirect returns to /face-upload.
             await ref.read(authProvider.notifier).updateTrainingFlags(hasFaceTrained: false);
           },
@@ -491,8 +558,12 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
                       const SizedBox(width: 12),
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: () {
+                          onPressed: () async {
                             _playbackTimer?.cancel();
+                            await _recorder.stop();
+                            await _player.stop();
+                            _streamSub?.cancel();
+                            _pcmChunks.clear();
                             setState(() {
                               _isRecording = false;
                               _isPlayingPreview = false;
@@ -521,10 +592,15 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
               ),
             ),
           ),
+          if (kDebugMode && _cloneResultVoiceId != null)
+            _DebugCloneBanner(
+              voiceId: _cloneResultVoiceId!,
+              errorHint: _cloneErrorHint,
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
             child: PresntGradientCta(
-              label: 'Continue to Analysis',
+              label: _isSubmitting ? 'Cloning your voice...' : 'Clone Voice & Continue',
               onPressed: (!_isSubmitting && complete) ? _handleContinue : null,
               trailing: _isSubmitting
                   ? const SizedBox(
@@ -537,6 +613,65 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
                     )
                   : null,
               padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Debug-only banner shown after a clone attempt.
+class _DebugCloneBanner extends StatelessWidget {
+  final String voiceId;
+  final String? errorHint;
+
+  const _DebugCloneBanner({required this.voiceId, this.errorHint});
+
+  @override
+  Widget build(BuildContext context) {
+    final success = voiceId.isNotEmpty;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: success ? Colors.green.shade900.withValues(alpha: 0.85) : Colors.red.shade900.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: success ? Colors.greenAccent.withValues(alpha: 0.4) : Colors.redAccent.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            success ? Icons.check_circle_outline : Icons.error_outline,
+            color: success ? Colors.greenAccent : Colors.redAccent,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  success ? 'ElevenLabs clone OK' : 'ElevenLabs clone FAILED',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                SelectableText(
+                  success ? 'voice_id: $voiceId' : (errorHint ?? 'voice_id empty — check logs'),
+                  style: TextStyle(
+                    color: success ? Colors.greenAccent.shade100 : Colors.redAccent.shade100,
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
             ),
           ),
         ],
