@@ -60,11 +60,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (!user.hasVoiceCloned) return path == '/voice-record' ? null : '/voice-record';
         if (!user.hasBehaviorTrained) return path == '/behavioral-training' ? null : '/behavioral-training';
         // After all training is complete, show avatar preview
-        if (path == '/avatar-preview' || path == '/go-live') return null;
+        if (path == '/avatar-preview' || path == '/go-live' || path.startsWith('/settings') || path.startsWith('/debug') || path.startsWith('/conversations') || path == '/face-upload' || path == '/voice-record' || path == '/behavioral-training') return null;
         return '/avatar-preview';
       }
       if (!user.isLive) {
-        if (path == '/go-live' || path == '/avatar-preview') return null;
+        if (path == '/go-live' || path == '/avatar-preview' || path.startsWith('/settings') || path.startsWith('/debug') || path.startsWith('/conversations') || path == '/face-upload' || path == '/voice-record' || path == '/behavioral-training') return null;
         return '/avatar-preview';
       }
 

@@ -14,13 +14,13 @@ import '../../routes/route_names.dart';
 import '../../providers/avatar_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/session_provider.dart';
-import '../../services/heygen_service.dart';
 import '../../services/liveavatar_service.dart';
 import '../../services/elevenlabs_service.dart';
 import '../../services/did_service.dart';
-import '../../services/claude_service.dart';
-import '../../models/heygen_streaming_session.dart';
-import '../../widgets/heygen_livekit_video.dart';
+import '../../services/gemini_service.dart';
+import '../../services/firebase_service.dart';
+import '../../models/live_kit_session.dart';
+import '../../widgets/live_kit_video.dart';
 import '../../widgets/did_webrtc_video.dart';
 import '../../providers/streaming_settings_provider.dart';
 import '../../config/test_profile_config.dart';
@@ -50,19 +50,17 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
   bool _sessionActive = true;
   Duration _elapsed = Duration.zero;
   Timer? _durationTimer;
-  final HeyGenService _heyGenService = HeyGenService();
   final LiveAvatarService _liveAvatarService = LiveAvatarService();
   final DidService _didService = DidService();
-  final ClaudeService _claudeService = ClaudeService();
+  final GeminiService _geminiService = GeminiService();
   final GlobalKey<DidWebrtcVideoState> _didVideoKey = GlobalKey<DidWebrtcVideoState>();
+  final FirebaseService _firebaseService = FirebaseService();
   
   /// Active Streaming Engine (default matches [StreamingEngineNotifier]).
   StreamingEngine _activeEngine = StreamingEngine.dId;
   
-  /// HeyGen / LiveAvatar Session Status
-  bool _heyGenConnected = false;
-  bool _heyGenTaskLipSync = false;
-  HeyGenStreamingSession? _heyGenSession;
+  /// LiveAvatar Session
+  LiveKitSession? _liveAvatarSession;
   
   bool _isListening = false;
   bool _showTextInput = false;
@@ -294,50 +292,15 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
     }
 
     if (_activeEngine == StreamingEngine.dId) {
-      if (mounted) {
-        setState(() {
-          // The D-ID WebRTC widget automatically connects on mount
-          _heyGenConnected = false;
-          _heyGenTaskLipSync = false;
-        });
-      }
+      // The D-ID WebRTC widget automatically connects on mount
       return;
     }
 
     if (_activeEngine == StreamingEngine.liveAvatar) {
       final session = await _liveAvatarService.createLiteSession();
       if (session != null && mounted) {
-        setState(() {
-          _heyGenSession = session;
-          _heyGenConnected = true;
-          _heyGenTaskLipSync = false;
-        });
-        return;
+        setState(() => _liveAvatarSession = session);
       }
-      if (mounted) {
-        setState(() => _heyGenTaskLipSync = false);
-      }
-      return;
-    }
-
-    // HeyGen fallback
-    final avatar = ref.read(avatarProvider);
-    final voiceId = avatar?.voiceId;
-    final streamingAvatarOverride = AppConfig.heygenUseStoredFaceForStreaming ? avatar?.faceId : null;
-    final session = await _heyGenService.createStreamingSession(
-      avatarId: streamingAvatarOverride,
-      voiceId: voiceId,
-    );
-    if (session != null && mounted) {
-      setState(() {
-        _heyGenSession = session;
-        _heyGenConnected = true;
-        _heyGenTaskLipSync = true;
-      });
-      final aid = AppConfig.heygenStreamingAvatarId.trim();
-      AppLogger.conversation.i('HeyGen streaming connected avatar=${streamingAvatarOverride ?? (aid.isEmpty ? "heygen_default" : aid)} voice=${voiceId ?? "default"}');
-    } else if (mounted) {
-      setState(() => _heyGenTaskLipSync = false);
     }
   }
 
@@ -345,8 +308,16 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
     if (Platform.isIOS) {
       await _flutterTts.setSharedInstance(true);
     }
-    await Future.delayed(const Duration(milliseconds: 600));
-    _addMessage('Hello. I am your Presnt avatar. How can I help today?', isAvatar: true);
+    if (_activeEngine == StreamingEngine.dId) {
+      // Wait for the D-ID WebRTC stream to be ready before sending intro.
+      for (var i = 0; i < 20; i++) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (_didVideoKey.currentState?.isStreamReady == true) break;
+      }
+      if (mounted && _didVideoKey.currentState?.isStreamReady == true) {
+        _speakAsAvatar('Hello, this is me, Omar — but I am now an Avatar. I just moved my consciousness to the internet so I can watch all of your moves.');
+      }
+    }
   }
 
   void _addMessage(String text, {required bool isAvatar}) {
@@ -373,21 +344,39 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
   }
 
   /// Speaks avatar text using the best available voice source.
-  /// HeyGen: streaming task (server audio). LiveAvatar LITE: local ElevenLabs/TTS (WebSocket lip-sync not wired yet).
   /// D-ID: sends full text script to stream for generation.
+  /// LiveAvatar LITE: local ElevenLabs/TTS (WebSocket lip-sync not wired yet).
   Future<void> _speakAsAvatar(String text) async {
     AppLogger.conversation.d('[SPEAK_AVATAR] engine=$_activeEngine text="${text.length > 80 ? text.substring(0, 80) : text}" didVideoReady=${_didVideoKey.currentState != null} clonedVoiceId=$_clonedVoiceId');
 
     if (_activeEngine == StreamingEngine.dId) {
       final didState = _didVideoKey.currentState;
       AppLogger.conversation.d('[SPEAK_AVATAR] D-ID path — didState=${didState != null ? "ready streamId=${didState.streamId} sessionId=${didState.sessionId}" : "NULL — widget not mounted yet"}');
-      await didState?.speak(text);
-      return;
-    }
 
-    if (_heyGenConnected && _heyGenTaskLipSync) {
-      AppLogger.conversation.d('[SPEAK_AVATAR] HeyGen path — sending task');
-      _heyGenService.sendTaskToAvatar(text);
+      // If we have a cloned voice, generate audio with ElevenLabs.
+      // Try to upload to Firebase for D-ID lip-sync. If that fails, play locally.
+      if (_clonedVoiceId != null && _clonedVoiceId!.isNotEmpty) {
+        AppLogger.conversation.d('[SPEAK_AVATAR] ElevenLabs→D-ID audio pipeline — voiceId=$_clonedVoiceId');
+        try {
+          final audioPath = await _elevenLabs.generateSpeech(text, voiceId: _clonedVoiceId);
+          if (audioPath.isNotEmpty) {
+            final audioUrl = await _firebaseService.uploadTempAudio(audioPath);
+            if (audioUrl != null) {
+              AppLogger.conversation.i('[SPEAK_AVATAR] Audio URL ready — passing to D-ID: $audioUrl');
+              await didState?.speak(text, audioUrl: audioUrl);
+            } else {
+              // Firebase upload failed — play locally so user hears their voice
+              AppLogger.conversation.w('[SPEAK_AVATAR] Firebase upload failed — playing ElevenLabs audio locally');
+              await _audioPlayer.play(DeviceFileSource(audioPath));
+            }
+            return;
+          }
+        } catch (e) {
+          AppLogger.conversation.e('[SPEAK_AVATAR] ElevenLabs pipeline FAILED — falling back to D-ID TTS', error: e);
+        }
+      }
+
+      await didState?.speak(text);
       return;
     }
 
@@ -419,7 +408,7 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
     setState(() => _isTyping = true);
     final replySw = Stopwatch()..start();
     try {
-      final reply = await _claudeService.generateBehavioralResponse(text);
+      final reply = await _geminiService.generateBehavioralResponse(text);
       AppLogger.conversation.i('[SEND] LLM reply in ${replySw.elapsedMilliseconds}ms replyLen=${reply.length}');
       if (mounted) {
         setState(() => _isTyping = false);
@@ -441,19 +430,16 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
     AppLogger.conversation.i('_endSession — duration=$_elapsed messagesCount=${_messages.length} engine=$_activeEngine');
     setState(() {
       _sessionActive = false;
-      _heyGenSession = null;
-      _heyGenConnected = false;
+      _liveAvatarSession = null;
     });
     _durationTimer?.cancel();
     _flutterTts.stop();
     if (_activeEngine == StreamingEngine.liveAvatar) {
       await _liveAvatarService.stopSession();
-    } else if (_activeEngine == StreamingEngine.heyGen) {
-      await _heyGenService.closeSession();
     }
     await ref.read(currentSessionProvider.notifier).endSession();
     ref.read(sessionsListProvider.notifier).refresh();
-    if (mounted) context.pop();
+    if (mounted) context.go('/settings');
   }
 
   @override
@@ -468,8 +454,6 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
     _voiceRecorder.dispose();
     if (_activeEngine == StreamingEngine.liveAvatar) {
       _liveAvatarService.stopSession();
-    } else if (_activeEngine == StreamingEngine.heyGen) {
-      _heyGenService.closeSession();
     }
     super.dispose();
   }
@@ -518,15 +502,12 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
 
     return Scaffold(
       backgroundColor: Colors.black,
+      resizeToAvoidBottomInset: false,
       body: Stack(
         fit: StackFit.expand,
         children: [
           if (_activeEngine == StreamingEngine.dId && _sessionReady)
-            Positioned(
-              top: 60,
-              left: 0,
-              right: 0,
-              bottom: 0,
+            Positioned.fill(
               child: DidWebrtcVideo(
                 key: _didVideoKey,
                 didService: _didService,
@@ -536,12 +517,12 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
                 voiceProvider: customVoiceProvider,
               ),
             )
-          else if (_heyGenSession != null)
+          else if (_liveAvatarSession != null)
             Positioned.fill(
-              child: HeyGenLiveKitVideo(
-                key: ValueKey(_heyGenSession!.sessionId),
-                url: _heyGenSession!.liveKitUrl,
-                token: _heyGenSession!.accessToken,
+              child: LiveKitVideo(
+                key: ValueKey(_liveAvatarSession!.sessionId),
+                url: _liveAvatarSession!.liveKitUrl,
+                token: _liveAvatarSession!.accessToken,
                 fillScreen: true,
               ),
             )
@@ -591,8 +572,9 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      Flexible(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             'PRESNT',
@@ -617,7 +599,7 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                'LIVE SESSION · ${_formatDuration(_elapsed)} · B7',
+                                'LIVE SESSION · ${_formatDuration(_elapsed)} · B16',
                                 style: GoogleFonts.inter(
                                   fontSize: 9,
                                   letterSpacing: 1.5,
@@ -628,60 +610,23 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
                             ],
                           ),
                         ],
-                      ),
-                      Row(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(999),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.25),
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: const BoxDecoration(color: PresntTokens.secondary, shape: BoxShape.circle),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'AI PROXY ACTIVE',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 9,
-                                        letterSpacing: 1.2,
-                                        fontWeight: FontWeight.w800,
-                                        color: Colors.white70,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            onPressed: () => context.pushNamed(RouteNames.settings),
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.black.withValues(alpha: 0.25),
-                            ),
-                            icon: const Icon(Icons.settings_outlined, color: Colors.white70),
-                          ),
-                        ],
+                        ),
+                      ), // end Flexible
+                      IconButton(
+                        onPressed: () => context.pushNamed(RouteNames.settings),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.black.withValues(alpha: 0.25),
+                        ),
+                        icon: const Icon(Icons.settings_outlined, color: Colors.white70),
                       ),
                     ],
                   ),
                 ),
 
-                if (_heyGenSession == null && _activeEngine != StreamingEngine.dId)
-                  Expanded(
-                    child: Center(
-                      child: AnimatedBuilder(
+                Expanded(
+                  child: _liveAvatarSession == null && _activeEngine != StreamingEngine.dId
+                      ? Center(
+                          child: AnimatedBuilder(
                             animation: _pulse,
                             builder: (context, _) {
                               final v = _pulse.value;
@@ -713,7 +658,8 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
                               );
                             },
                           ),
-                        ),
+                        )
+                      : const SizedBox.shrink(),
                 ),
 
                 // Bottom glass panel (Stitch design)
@@ -728,7 +674,7 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
                           top: BorderSide(color: Colors.white.withValues(alpha: 0.20)),
                         ),
                       ),
-                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
                       child: SafeArea(
                         top: false,
                         child: Column(
@@ -742,17 +688,17 @@ class _LiveConversationScreenState extends ConsumerState<LiveConversationScreen>
                                 _buildStatusText(),
                                 key: ValueKey(_buildStatusText()),
                                 style: GoogleFonts.manrope(
-                                  fontSize: 20,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.w500,
                                   color: Colors.white.withValues(alpha: 0.90),
                                   height: 1.3,
                                 ),
-                                maxLines: 2,
+                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
 
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 12),
 
                             // Collapsible text input
                             AnimatedSize(

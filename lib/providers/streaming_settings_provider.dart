@@ -7,7 +7,7 @@ import '../core/utils/app_logger.dart';
 ///   custom  — full pipeline: user photo → D-ID avatar, user voice → ElevenLabs clone.
 enum AvatarMode { studio, custom }
 
-enum StreamingEngine { liveAvatar, dId, heyGen }
+enum StreamingEngine { liveAvatar, dId }
 
 final avatarModeProvider = NotifierProvider<AvatarModeNotifier, AvatarMode>(AvatarModeNotifier.new);
 
@@ -53,8 +53,6 @@ class StreamingEngineNotifier extends Notifier<StreamingEngine> {
     switch (val) {
       case 'dId':
         return StreamingEngine.dId;
-      case 'heyGen':
-        return StreamingEngine.heyGen;
       case 'liveAvatar':
         return StreamingEngine.liveAvatar;
       default:

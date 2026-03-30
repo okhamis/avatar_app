@@ -1,5 +1,6 @@
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import '../config/llm_prompts.dart';
 import '../core/utils/app_logger.dart';
@@ -9,7 +10,6 @@ class GeminiService implements BehavioralLlm {
   static String? _geminiKeyFromEnv() {
     var raw = dotenv.env['GEMINI_API_KEY']?.trim();
     if (raw == null || raw.isEmpty) return null;
-    // Strip optional surrounding quotes from .env
     if (raw.length >= 2 &&
         ((raw.startsWith('"') && raw.endsWith('"')) ||
             (raw.startsWith("'") && raw.endsWith("'")))) {
@@ -25,49 +25,62 @@ class GeminiService implements BehavioralLlm {
     if (apiKey == null || apiKey.startsWith('your_')) {
       AppLogger.gemini.w('GEMINI_API_KEY missing — returning stub response');
       await Future.delayed(const Duration(seconds: 1));
-      return "I am your Presnt avatar. I received your message and I am processing it on your behalf. (Configure GEMINI_API_KEY to enable live responses.)";
+      return 'I am your Presnt avatar. Configure GEMINI_API_KEY to enable live responses.';
     }
 
-    // Common mistake: "gen-lang-client-..." is not a Gemini API key
-    if (apiKey.startsWith('gen-lang-client-')) {
-      AppLogger.gemini.w('GEMINI_API_KEY looks like a client ID — use AIza key from AI Studio');
-      return "GEMINI_API_KEY in .env is not a valid Gemini API key (\"gen-lang-client-...\" is the wrong kind of credential). Open https://aistudio.google.com/app/apikey , create an API key, and paste the value that typically starts with \"AIza\".";
-    }
-
-    if (!apiKey.startsWith('AIza')) {
-      AppLogger.gemini.w('GEMINI_API_KEY format unexpected — expected AIza prefix; if API fails create key at AI Studio');
-    }
-
-    AppLogger.gemini.i('generateBehavioralResponse — model=${AppConfig.geminiModel} promptLen=${prompt.length}');
+    final model = AppConfig.geminiModel;
+    AppLogger.gemini.i('generateBehavioralResponse — model=$model promptLen=${prompt.length}');
 
     try {
-      final model = GenerativeModel(
-        model: AppConfig.geminiModel,
-        apiKey: apiKey,
-        systemInstruction: Content.system(kGeminiDigitalTwinSystemInstruction),
+      final url = Uri.parse(
+        'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey',
       );
 
-      final response = await model.generateContent([
-        Content.text(prompt)
-      ]);
+      final body = jsonEncode({
+        'system_instruction': {
+          'parts': [{'text': kGeminiDigitalTwinSystemInstruction}]
+        },
+        'contents': [
+          {
+            'role': 'user',
+            'parts': [{'text': prompt}]
+          }
+        ],
+        'tools': [
+          {'google_search': {}}
+        ],
+      });
 
-      final text = response.text ?? "Sorry, no response generated from the Gemini neural core.";
-      AppLogger.gemini.i('generateBehavioralResponse OK — responseLen=${text.length}');
-      return text;
-    } catch (e) {
-      AppLogger.gemini.e('API exception', error: e);
-      final msg = e.toString();
-      final lower = msg.toLowerCase();
-      final looksLikeKeyProblem = lower.contains('api key') &&
-          (lower.contains('invalid') ||
-              lower.contains('not valid') ||
-              lower.contains('permission denied') ||
-              lower.contains('api_key_invalid'));
-      if (looksLikeKeyProblem) {
-        AppLogger.gemini.e('Invalid/unauthorized Gemini API key — check AI Studio');
-        return "Invalid or unauthorized Gemini API key. Create a key at https://aistudio.google.com/app/apikey , set GEMINI_API_KEY in .env (no quotes), full restart the app.";
+      final res = await http.post(url, headers: {'Content-Type': 'application/json'}, body: body);
+      AppLogger.gemini.d('HTTP ${res.statusCode}');
+
+      if (res.statusCode != 200) {
+        AppLogger.gemini.w('API error ${res.statusCode}: ${res.body.length > 200 ? res.body.substring(0, 200) : res.body}');
+        return 'I could not reach my knowledge base right now.';
       }
-      return "Communication error with my Gemini core: ${msg.length > 200 ? msg.substring(0, 200) : msg}";
+
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final candidates = data['candidates'] as List<dynamic>?;
+      if (candidates != null && candidates.isNotEmpty) {
+        final content = candidates.first['content'] as Map<String, dynamic>?;
+        final parts = content?['parts'] as List<dynamic>?;
+        if (parts != null) {
+          final text = parts
+              .where((p) => p is Map && p['text'] != null)
+              .map((p) => p['text'] as String)
+              .join(' ');
+          if (text.isNotEmpty) {
+            AppLogger.gemini.i('generateBehavioralResponse OK — responseLen=${text.length}');
+            return text;
+          }
+        }
+      }
+
+      AppLogger.gemini.w('Empty response from Gemini');
+      return 'I received an empty response.';
+    } catch (e) {
+      AppLogger.gemini.e('Request failed', error: e);
+      return 'Communication error: ${e.toString().length > 100 ? e.toString().substring(0, 100) : e.toString()}';
     }
   }
 
@@ -75,7 +88,7 @@ class GeminiService implements BehavioralLlm {
   Future<String> trainBehavior(Map<String, String> answers) async {
     AppLogger.gemini.d('trainBehavior placeholder: ${answers.length} answers');
     await Future.delayed(const Duration(seconds: 2));
-    final id = "behavior_${DateTime.now().millisecondsSinceEpoch}";
+    final id = 'behavior_${DateTime.now().millisecondsSinceEpoch}';
     AppLogger.gemini.i('trainBehavior complete behaviorId=$id');
     return id;
   }

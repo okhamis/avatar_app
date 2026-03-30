@@ -174,7 +174,7 @@ class DidWebrtcVideoState extends State<DidWebrtcVideo> {
     }
   }
 
-  Future<void> speak(String text) async {
+  Future<void> speak(String text, {String? audioUrl}) async {
     if (streamId != null && sessionId != null) {
       await widget.didService.sendTask(
         streamId: streamId!,
@@ -182,6 +182,7 @@ class DidWebrtcVideoState extends State<DidWebrtcVideo> {
         text: text,
         voiceProvider: widget.voiceProvider,
         voiceId: widget.voiceId,
+        audioUrl: audioUrl,
       );
     }
   }

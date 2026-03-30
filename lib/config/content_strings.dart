@@ -1,6 +1,6 @@
 // User-visible copy centralized for onboarding and hints.
 
 const String kVoiceRecordingSampleScript =
-    '"My digital presence is an extension of my identity. This voice represents my thoughts, my values, and my unique perspective in the digital world. I am Presnt."';
+    'Hi, my name is Omar. I am a technology entrepreneur passionate about building products that change the world. I believe in continuous learning, taking bold risks, and surrounding myself with great people. When I face a challenge, I tackle it head on with data, intuition, and a clear vision. This is my voice, and this is how I speak every day.';
 
 const String kSignInEmailHint = 'you@example.com';

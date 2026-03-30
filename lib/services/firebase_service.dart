@@ -159,6 +159,38 @@ class FirebaseService {
     }
   }
 
+  /// Uploads a temporary audio file (mp3) to Firebase Storage and returns a
+  /// public download URL. Used to pass ElevenLabs audio to D-ID's audio pipeline.
+  Future<String?> uploadTempAudio(String localFilePath) async {
+    final file = File(localFilePath);
+    if (!await file.exists()) return null;
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) {
+      AppLogger.firebase.w('uploadTempAudio skipped — no authenticated user');
+      return null;
+    }
+    AppLogger.firebase.d('uploadTempAudio uid=$uid path=$localFilePath');
+    try {
+      _ensureFirebaseInitialized();
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final ref = FirebaseStorage.instance.ref().child('avatars/$uid/audio/$ts.mp3');
+      await ref.putFile(file, SettableMetadata(contentType: 'audio/mpeg'));
+      final url = await ref.getDownloadURL();
+      AppLogger.firebase.i('uploadTempAudio OK url=$url');
+      return url;
+    } on FirebaseException catch (e) {
+      if (e.code == 'no-app') {
+        AppLogger.firebase.w('uploadTempAudio skipped — Firebase not configured');
+        return null;
+      }
+      AppLogger.firebase.e('uploadTempAudio failed', error: e);
+      return null;
+    } catch (e) {
+      AppLogger.firebase.e('uploadTempAudio failed', error: e);
+      return null;
+    }
+  }
+
   // ———————————————————————— Sessions ————————————————————————
 
   CollectionReference<Map<String, dynamic>> _sessionsCol(String accountId) =>

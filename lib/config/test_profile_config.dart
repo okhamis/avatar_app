@@ -8,7 +8,7 @@ class TestProfileConfig {
   /// (copy from ElevenLabs dashboard or from a prior clone run) so that the
   /// test profile gets a valid voice without recording.
   /// Leave empty ('') to use the default ElevenLabs voice from AppConfig.
-  static const String elevenLabsVoiceId = '';
+  static const String elevenLabsVoiceId = 's3sVj3iHOA0zrwBWfnzU';
 
   /// Optional: a local audio file to clone on first test-profile injection.
   /// Set to a .wav/.m4a path on disk if you want automatic voice cloning.

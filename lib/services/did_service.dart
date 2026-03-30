@@ -311,26 +311,31 @@ class DidService {
     required String text,
     String? voiceProvider,
     String? voiceId,
+    String? audioUrl,
   }) async {
     final headers = _authHeaders;
     if (headers == null || _activeBase == null) return;
 
     final url = Uri.parse('$_activeBase/$streamId');
-    AppLogger.did.d('[6] sendTask — url=$url text="${text.length > 60 ? text.substring(0, 60) : text}" voiceProvider=${voiceProvider ?? "microsoft"} voiceId=${voiceId ?? "en-US-GuyNeural"}');
+    final usingAudio = audioUrl != null && audioUrl.isNotEmpty;
+    AppLogger.did.d('[6] sendTask — url=$url mode=${usingAudio ? "audio" : "text"} voiceProvider=${voiceProvider ?? "microsoft"} voiceId=${voiceId ?? "en-US-GuyNeural"} audioUrl=${audioUrl ?? "null"} text="${text.length > 60 ? text.substring(0, 60) : text}"');
     try {
+      final script = usingAudio
+          ? {'type': 'audio', 'audio_url': audioUrl}
+          : {
+              'type': 'text',
+              'input': text,
+              'provider': {
+                'type': voiceProvider ?? 'microsoft',
+                'voice_id': voiceId ?? 'en-US-GuyNeural',
+              },
+            };
       final res = await http.post(
         url,
         headers: headers,
         body: jsonEncode({
           'session_id': sessionId,
-          'script': {
-            'type': 'text',
-            'input': text,
-            'provider': {
-              'type': voiceProvider ?? 'microsoft',
-              'voice_id': voiceId ?? 'en-US-GuyNeural',
-            },
-          },
+          'script': script,
         }),
       );
       AppLogger.did.d('[6] sendTask — RESPONSE HTTP ${res.statusCode} body=${res.body.length > 200 ? res.body.substring(0, 200) : res.body}');
